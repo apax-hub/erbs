@@ -4,7 +4,7 @@ import numpy as np
 import jax
 from ase.calculators.calculator import Calculator, all_changes
 
-from erbs.cv.cv_nl import compute_g_nl
+from erbs.cv.cv_nl import compute_cv_nl
 
 
 class GKernelMTD(Calculator):
@@ -37,7 +37,7 @@ class GKernelMTD(Calculator):
         self.ref_cvs.append(g_new)
         
         reduced_ref_cvs = self.dim_reduction_fn(self.ref_cvs, self.ref_atomic_numbers)
-        g_neighbor = compute_g_nl(self.ref_atomic_numbers, atoms.numbers)
+        g_neighbor = compute_cv_nl(self.ref_atomic_numbers, atoms.numbers)
         energy_fn = self.energy_fn_factory.create(reduced_ref_cvs, self.ref_atomic_numbers, g_neighbor)
         self.ref_atomic_numbers.append(atoms.numbers)
 
