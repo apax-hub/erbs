@@ -76,9 +76,22 @@ class GKernelMTD(Calculator):
         np.savez(path, g=self.ref_cvs, z=self.ref_atomic_numbers)
 
     def add_configs(self, atoms_list):
-        neighbors = 0
-        for atoms in atoms_list:
-            g = self.cv_fn(atoms.positions, neighbors)
-            self.ref_cvs.append(g)
 
-        # TODO reallocate NL if necessary
+        @jax.jit
+        def calc_g(positions, neighbors):
+            neighbors = neighbors.update(positions)
+            g = self.cv_fn(positions, neighbors)
+            return g
+
+        for atoms in atoms_list:
+            positions = jnp.array(atoms.positions, dtype=jnp.float32)
+            numbers = jnp.array(atoms.numbers, dtype=jnp.int32)
+
+            if not self.neighbors or self.neighbors.did_buffer_overflow:
+                self.neighbors = self.neighbor_fn.allocate(positions)
+            else:
+                self.neighbors.update(positions)
+
+            g = calc_g(positions, self.neighbors)
+            self.ref_cvs.append(np.asarray(g))
+            self.ref_atomic_numbers.append(np.asarray(numbers))
