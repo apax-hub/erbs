@@ -9,8 +9,11 @@ from erbs.cv.cv_nl import compute_cv_nl
 
 class GKernelMTD(Calculator):
     implemented_properties = ['energy', 'forces']
-    def __init__(self, cv_fn, dim_reduction_fn, energy_fn_factory, neighbor_fn, interval=100, **kwargs):
+    def __init__(self, cv_fn, dim_reduction_fn, energy_fn_factory, neighbor_fn, k, a, interval=100, **kwargs):
         Calculator.__init__(self, **kwargs)
+
+        self.k = k
+        self.a = a
         
         self.cv_fn = cv_fn
         self.dim_reduction_fn = dim_reduction_fn
@@ -31,15 +34,34 @@ class GKernelMTD(Calculator):
 
     def update_bias(self, atoms):
         print("updating bias")
-        position = jnp.array(atoms.positions, jnp.float32)
+        position = jnp.array(atoms.positions, dtype=jnp.float32)
+        numbers = jnp.array(atoms.numbers, dtype=jnp.int32)
+
+        if self.neighbors is None:
+            self.neighbors = self.neighbor_fn.allocate(position)
+        else:
+            self.neighbors = self.neighbors.update(position)
+
+        if self.neighbors.did_buffer_overflow:
+            print("neighbor list overflowed, reallocating.")
+            self.neighbors = self.neighbor_fn.allocate(position)        
 
         g_new = self.cv_fn(position, self.neighbors)
         self.ref_cvs.append(g_new)
-        
-        reduced_ref_cvs = self.dim_reduction_fn(self.ref_cvs, self.ref_atomic_numbers)
-        g_neighbor = compute_cv_nl(self.ref_atomic_numbers, atoms.numbers)
-        energy_fn = self.energy_fn_factory.create(reduced_ref_cvs, self.ref_atomic_numbers, g_neighbor)
         self.ref_atomic_numbers.append(atoms.numbers)
+        
+        reduced_ref_cvs, sorted_ref_numbers = self.dim_reduction_fn.fit_transform(self.ref_cvs, self.ref_atomic_numbers)
+        g_neighbors = compute_cv_nl(atoms.numbers, sorted_ref_numbers)
+        energy_fn = self.energy_fn_factory.create(
+            self.cv_fn,
+            self.dim_reduction_fn,
+            numbers,
+            reduced_ref_cvs,
+            sorted_ref_numbers,
+            g_neighbors,
+            self.k,
+            self.a
+        )
 
         @jax.jit
         def body_fn(positions, neighbor):
@@ -53,6 +75,10 @@ class GKernelMTD(Calculator):
     def calculate(self, atoms=None, properties=['energy'],
                   system_changes=all_changes):
         Calculator.calculate(self, atoms, properties, system_changes)
+
+        update_bias = self._step_counter % self.interval == 0
+        if update_bias and self.accumulate:
+            self.update_bias(atoms)
         
         position = jnp.array(atoms.positions, dtype=jnp.float32)
         energy, forces, self.neighbors = self.energy_and_force_fn(position, self.neighbors)
@@ -67,10 +93,6 @@ class GKernelMTD(Calculator):
             "forces": np.array(forces, dtype=np.float64)
         }
         self._step_counter += 1
-
-        update_bias = self._step_counter % self.interval == 0
-        if update_bias and self.accumulate:
-            self.update_bias(atoms)
 
     def save_descriptors(self, path):
         np.savez(path, g=self.ref_cvs, z=self.ref_atomic_numbers)
