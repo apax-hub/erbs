@@ -9,14 +9,14 @@ from erbs.cv.cv_nl import compute_cv_nl
 
 class GKernelMTD(Calculator):
     implemented_properties = ['energy', 'forces']
-    def __init__(self, cv_fn, dim_reduction_fn, energy_fn_factory, neighbor_fn, k, a, interval=100, **kwargs):
+    def __init__(self, cv_fn, dim_reduction_factory, energy_fn_factory, neighbor_fn, k, a, interval=100, **kwargs):
         Calculator.__init__(self, **kwargs)
 
         self.k = k
         self.a = a
         
         self.cv_fn = cv_fn
-        self.dim_reduction_fn = dim_reduction_fn
+        self.dim_reduction_factory = dim_reduction_factory
         self.energy_fn_factory = energy_fn_factory
         self.neighbor_fn = neighbor_fn
         
@@ -33,7 +33,6 @@ class GKernelMTD(Calculator):
         self.accumulate = True
 
     def update_bias(self, atoms):
-        print("updating bias")
         position = jnp.array(atoms.positions, dtype=jnp.float32)
         numbers = jnp.array(atoms.numbers, dtype=jnp.int32)
 
@@ -50,14 +49,14 @@ class GKernelMTD(Calculator):
         self.ref_cvs.append(g_new)
         self.ref_atomic_numbers.append(atoms.numbers)
         
-        reduced_ref_cvs, sorted_ref_numbers = self.dim_reduction_fn.fit_transform(self.ref_cvs, self.ref_atomic_numbers)
+        reduced_ref_cvs, sorted_ref_numbers = self.dim_reduction_factory.fit_transform(self.ref_cvs, self.ref_atomic_numbers)
         g_neighbors = compute_cv_nl(atoms.numbers, sorted_ref_numbers)
-        energy_fn = self.energy_fn_factory.create(
+
+        energy_fn = self.energy_fn_factory(
             self.cv_fn,
-            self.dim_reduction_fn,
+            self.dim_reduction_factory.create_dim_reduction_fn(),
             numbers,
             reduced_ref_cvs,
-            sorted_ref_numbers,
             g_neighbors,
             self.k,
             self.a
@@ -111,9 +110,6 @@ class GKernelMTD(Calculator):
 
             if not self.neighbors or self.neighbors.did_buffer_overflow:
                 self.neighbors = self.neighbor_fn.allocate(positions)
-            else:
-                self.neighbors.update(positions)
-
             g = calc_g(positions, self.neighbors)
             self.ref_cvs.append(np.asarray(g))
             self.ref_atomic_numbers.append(np.asarray(numbers))
