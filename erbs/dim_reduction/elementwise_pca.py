@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.decomposition import PCA
+import jax.numpy as jnp
 
 class ElementwisePCA:
     def __init__(self, n_components=2) -> None:
@@ -14,10 +15,17 @@ class ElementwisePCA:
         # since this method sorts them
         # and subsequent functions can make use of sorted lists
 
+        g = np.concatenate(g, axis=0)
+        Z = np.concatenate(Z, axis=0)
+        g = np.reshape(g, (-1, g.shape[-1]))
+        Z = np.reshape(Z, (-1,))
+
+        n_elements = np.max(Z) + 1
+
         new_gs = []
         new_zs = []
-        mu = np.zeros((np.max(Z), g.shape[1]))
-        sigmaT = np.zeros((np.max(Z), g.shape[1], self.n_components))
+        mu = np.zeros((n_elements, g.shape[1]))
+        sigmaT = np.zeros((n_elements, g.shape[1], self.n_components))
 
         for element in elements:
             g_filtered = g[Z==element]
@@ -32,7 +40,7 @@ class ElementwisePCA:
 
         new_gs = np.concatenate(new_gs, axis=0)
         new_zs = np.concatenate(new_zs, axis=0)
-        self.me, self.sigmaT = mu, sigmaT
+        self.mu, self.sigmaT = jnp.array(mu), jnp.array(sigmaT)
         return new_gs, new_zs
 
     def create_dim_reduction_fn(self):
