@@ -2,11 +2,13 @@
 from typing import Optional
 
 import haiku as hk
+import flax.linen as nn
 import jax
 import jax.numpy as jnp
 import einops
 import numpy as np
 from jax_md import space
+from typing import Any
 
 
 class GaussianBasis(hk.Module):
@@ -68,5 +70,41 @@ class RBFDescriptor(hk.Module):
         # dr shape: neighbors
         dr = self.metric(R[neighbor.idx[0]], R[neighbor.idx[1]])
         radial_basis = self.radial_fn(dr)
+        descriptor = jax.ops.segment_sum(radial_basis, neighbor.idx[1], self.n_atoms)
+        return descriptor
+
+
+class RBFDescriptorFlax(nn.Module):
+    displacement_fn: space.free()[0]
+    n_basis: int = 5
+    r_min: float = 0.5
+    r_max: float = 6.0
+    dtype: Any =jnp.float32
+    def setup(self):
+        self.betta = self.n_basis**2 / self.r_max**2
+        shifts = self.r_min + (self.r_max - self.r_min) / self.n_basis * np.arange(self.n_basis)
+
+        # shape: 1 x n_basis
+        shifts = einops.repeat(shifts, "n_basis -> 1 n_basis")
+        self.shifts = jnp.asarray(shifts, dtype=self.dtype)
+
+        self.metric = space.map_bond(
+            space.canonicalize_displacement_or_metric(self.displacement_fn)
+        )
+
+    def __call__(self, R, Z, neighbor):
+        R = R.astype(self.dtype)
+        # R shape n_atoms x 3
+        # Z shape n_atoms
+
+        # dr shape: neighbors
+        dr = self.metric(R[neighbor.idx[0]], R[neighbor.idx[1]])
+        dr = einops.repeat(dr, "neighbors -> neighbors 1")
+    
+        # 1 x n_basis, neighbors x 1 -> neighbors x n_basis
+        distances = self.shifts - dr
+
+        # shape: neighbors x n_basis
+        radial_basis = jnp.exp(-self.betta * (distances**2))
         descriptor = jax.ops.segment_sum(radial_basis, neighbor.idx[1], self.n_atoms)
         return descriptor
