@@ -2,7 +2,7 @@
 name = "erbs"
 version = "0.1.0"
 description = "Enhanced sampling in the representation space of atomistic neural networks."
-authors = ["Moritz Schäfer <moritz.schaefer@pm.me>"]
+authors = ["Moritz Schäfer <schaefer@theochem.uni-stuttgart.de"]
 license = "MIT"
 readme = "README.md"
 
