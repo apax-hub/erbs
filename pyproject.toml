@@ -2,7 +2,7 @@
 name = "erbs"
 version = "0.1.0"
 description = "Enhanced sampling in the representation space of atomistic neural networks."
-authors = ["Moritz Schäfer <schaefer@theochem.uni-stuttgart.de"]
+authors = ["Moritz Schäfer <schaefer@theochem.uni-stuttgart.de>"]
 license = "MIT"
 readme = "README.md"
 
@@ -14,7 +14,6 @@ jax = "^0.4.4"
 jraph = "^0.0.6.dev0"
 jax-md = "^0.2.5"
 flax = "^0.6.4"
-dm-haiku = "^0.0.9"
 scikit-learn = "^1.2.1"
 einops = "^0.6.0"
 
