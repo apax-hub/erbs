@@ -1,3 +1,3 @@
-from erbs.descriptor.example_descriptor import RBFDescriptor
+from erbs.descriptor.example_descriptor import RBFDescriptorFlax
 
-__all__ = ["RBFDescriptor"]
+__all__ = ["RBFDescriptorFlax"]
