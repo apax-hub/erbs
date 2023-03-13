@@ -1,13 +1,11 @@
+from typing import Any, Callable
 
-from typing import Callable
-
+import einops
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
-import einops
 import numpy as np
 from jax_md import space
-from typing import Any
 
 
 class RBFDescriptorFlax(nn.Module):
@@ -15,10 +13,13 @@ class RBFDescriptorFlax(nn.Module):
     n_basis: int = 5
     r_min: float = 0.5
     r_max: float = 6.0
-    dtype: Any =jnp.float32
+    dtype: Any = jnp.float32
+
     def setup(self):
         self.betta = self.n_basis**2 / self.r_max**2
-        shifts = self.r_min + (self.r_max - self.r_min) / self.n_basis * np.arange(self.n_basis)
+        shifts = self.r_min + (self.r_max - self.r_min) / self.n_basis * np.arange(
+            self.n_basis
+        )
 
         # shape: 1 x n_basis
         shifts = einops.repeat(shifts, "n_basis -> 1 n_basis")
@@ -36,7 +37,7 @@ class RBFDescriptorFlax(nn.Module):
         # dr shape: neighbors
         dr = self.metric(R[neighbor.idx[0]], R[neighbor.idx[1]])
         dr = einops.repeat(dr, "neighbors -> neighbors 1")
-    
+
         # 1 x n_basis, neighbors x 1 -> neighbors x n_basis
         distances = self.shifts - dr
 

@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def compute_cv_nl(Z, Z_ref):
     idx_is = []
     idx_js = []

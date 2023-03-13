@@ -1,6 +1,7 @@
+import jax.numpy as jnp
 import numpy as np
 from sklearn.decomposition import PCA
-import jax.numpy as jnp
+
 
 class ElementwisePCA:
     def __init__(self, n_components=2) -> None:
@@ -28,12 +29,12 @@ class ElementwisePCA:
         sigmaT = np.zeros((n_elements, g.shape[1], self.n_components))
 
         for element in elements:
-            g_filtered = g[Z==element]
+            g_filtered = g[Z == element]
             pca = PCA(n_components=self.n_components)
             g_pca = pca.fit_transform(g_filtered)
-            
+
             new_gs.append(g_pca)
-            new_zs.append(Z[Z==element])
+            new_zs.append(Z[Z == element])
 
             mu[element] = pca.mean_
             sigmaT[element] = pca.components_.T
@@ -44,9 +45,8 @@ class ElementwisePCA:
         return new_gs, new_zs
 
     def create_dim_reduction_fn(self):
-
         def dim_reduction_fn(g_i, Z_i):
-            g_reduced_i = ((g_i - self.mu[Z_i]) @ self.sigmaT[Z_i])
+            g_reduced_i = (g_i - self.mu[Z_i]) @ self.sigmaT[Z_i]
             return g_reduced_i
 
         return dim_reduction_fn

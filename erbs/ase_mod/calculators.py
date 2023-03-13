@@ -1,8 +1,8 @@
 from ase.calculators.calculator import Calculator, all_changes
 
+
 class LinearCombinationCalculator(Calculator):
-    """LinearCombinationCalculator for weighted summation of multiple calculators.
-    """
+    """LinearCombinationCalculator for weighted summation of multiple calculators."""
 
     def __init__(self, calcs, weights, atoms=None):
         """Implementation of sum of calculators.
@@ -18,27 +18,30 @@ class LinearCombinationCalculator(Calculator):
         super().__init__(atoms=atoms)
 
         if len(calcs) == 0:
-            raise ValueError('The value of the calcs must be a list of Calculators')
+            raise ValueError("The value of the calcs must be a list of Calculators")
 
         for calc in calcs:
             if not isinstance(calc, Calculator):
-                raise ValueError('All the calculators should be inherited form the ase\'s Calculator class')
+                raise ValueError(
+                    "All the calculators should be inherited from" \
+                    "the ase's Calculator class"
+                )
 
-        common_properties = set.intersection(*(set(calc.implemented_properties) for calc in calcs))
+        common_properties = set.intersection(
+            *(set(calc.implemented_properties) for calc in calcs)
+        )
         self.implemented_properties = list(common_properties)
 
-        # if not self.implemented_properties:
-        #     raise PropertyNotImplementedError('There are no common property implemented for the potentials!')
-
         if len(weights) != len(calcs):
-            raise ValueError('The length of the weights must be the same as the number of calculators!')
+            raise ValueError(
+                "The length of the weights must be the same as the number of calculators!"
+            )
 
         self.calcs = calcs
         self.weights = weights
 
-    def calculate(self, atoms=None, properties=['energy'], system_changes=all_changes):
-        """ Calculates all the specific property for each calculator and returns with the summed value.
-        """
+    def calculate(self, atoms=None, properties=["energy"], system_changes=all_changes):
+        """Calculates all the specific property for each calculator and returns with the summed value."""
 
         super().calculate(atoms, properties, system_changes)
         properties = ["energy", "forces"]
@@ -66,9 +69,8 @@ class LinearCombinationCalculator(Calculator):
             calc.reset()
 
     def __str__(self):
-        calculators = ', '.join(calc.__class__.__name__ for calc in self.calcs)
-        return '{}({})'.format(self.__class__.__name__, calculators)
-
+        calculators = ", ".join(calc.__class__.__name__ for calc in self.calcs)
+        return "{}({})".format(self.__class__.__name__, calculators)
 
 
 class SumCalculator(LinearCombinationCalculator):
@@ -89,5 +91,5 @@ class SumCalculator(LinearCombinationCalculator):
             Optional :class:`~ase.Atoms` object to which the calculator will be attached.
         """
 
-        weights = [1.] * len(calcs)
+        weights = [1.0] * len(calcs)
         super().__init__(calcs, weights, atoms)
