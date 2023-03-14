@@ -20,7 +20,7 @@ def append_to_ds(ds, new_data, batch_dim=True):
         ds[-new_data.shape[0] :, ...] = new_data
 
 
-class GKernelMTD(Calculator):
+class GKernelBias(Calculator):
     implemented_properties = ["energy", "forces"]
 
     def __init__(
@@ -30,8 +30,6 @@ class GKernelMTD(Calculator):
         dim_reduction_factory,
         energy_fn_factory,
         neighbor_fn,
-        k,
-        a,
         interval=100,
         log_file="labels.hdf5",
         **kwargs
@@ -45,9 +43,6 @@ class GKernelMTD(Calculator):
             )
         self.base_calc = base_calc
         self.log_file = log_file
-
-        self.k = k
-        self.a = a
 
         self.cv_fn = cv_fn
         self.dim_reduction_factory = dim_reduction_factory
@@ -148,14 +143,12 @@ class GKernelMTD(Calculator):
         )
         g_neighbors = compute_cv_nl(atoms.numbers, sorted_ref_numbers)
 
-        energy_fn = self.energy_fn_factory(
+        energy_fn = self.energy_fn_factory.create(
             self.cv_fn,
             self.dim_reduction_factory.create_dim_reduction_fn(),
             numbers,
             reduced_ref_cvs,
             g_neighbors,
-            self.k,
-            self.a,
         )
 
         @jax.jit
