@@ -20,7 +20,7 @@ def energy_fn_factory(cv_fn, dim_reduction_fn, Z, g_ref, g_nl, k, a):
 
 
 
-class OPESFactory:
+class OPESExploreFactory:
     def __init__(self, T=300, dE=1.2, a=0.3) -> None:
         self.beta = 1 / (units.kB * T)
         self.a = a
@@ -28,6 +28,7 @@ class OPESFactory:
         if dE < units.kB * T:
             raise ValueError("dE needs to be larger than 1.0!")
         self.dE = dE = units.kB * T * dE
+        self.gamma = self.dE * self.beta
 
     def create(self, cv_fn, dim_reduction_fn, Z, g_ref, g_nl):
         n_atoms = Z.shape[0]
@@ -39,12 +40,11 @@ class OPESFactory:
             kde_ij = vmap(gaussian, (0, None, None), 0)(g_diff, self.k, self.a)
 
             prob_i = segment_mean(kde_ij, g_nl[0], num_segments=n_atoms)
-
-            gamma = 1 - (1 / (self.beta * self.dE)) 
-            # This should be (gamma - 1) instead of (1-1/gamma) for opes explore
-            eps = jnp.exp(-(self.beta * self.dE) / gamma)
+            eps = jnp.exp(- self.dE * self.beta / (self.gamma - 1.0))
             unscaled_bias_i = jnp.log(prob_i + eps)
-            bias_i = gamma / self.beta * unscaled_bias_i
+
+            prefactor = (self.gamma - 1.0) / self.beta
+            bias_i = prefactor * unscaled_bias_i
 
             return jnp.sum(bias_i)
 
