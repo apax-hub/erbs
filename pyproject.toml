@@ -2,14 +2,14 @@
 name = "erbs"
 version = "0.1.0"
 description = "Enhanced sampling in the representation space of atomistic neural networks."
-authors = ["Moritz Schäfer <schaefer@theochem.uni-stuttgart.de>"]
+authors = ["Moritz René Schäfer <schaefer@theochem.uni-stuttgart.de>"]
 license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.9, <3.11"
 ase = "^3.22.1"
-numpy = "^1.24.2"
+numpy = "~1.21"
 jax = "^0.4.4"
 jraph = "^0.0.6.dev0"
 jax-md = "^0.2.5"
