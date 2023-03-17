@@ -19,7 +19,6 @@ def energy_fn_factory(cv_fn, dim_reduction_fn, Z, g_ref, g_nl, k, a):
     return energy_fn
 
 
-
 class OPESExploreFactory:
     def __init__(self, T=300, dE=1.2, a=0.3) -> None:
         self.beta = 1 / (units.kB * T)
@@ -40,7 +39,7 @@ class OPESExploreFactory:
             kde_ij = vmap(gaussian, (0, None, None), 0)(g_diff, self.k, self.a)
 
             prob_i = segment_mean(kde_ij, g_nl[0], num_segments=n_atoms)
-            eps = jnp.exp(- self.dE * self.beta / (self.gamma - 1.0))
+            eps = jnp.exp(-self.dE * self.beta / (self.gamma - 1.0))
             unscaled_bias_i = jnp.log(prob_i + eps)
 
             prefactor = (self.gamma - 1.0) / self.beta

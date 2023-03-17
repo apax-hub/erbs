@@ -7,6 +7,7 @@ import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 from ase.calculators.singlepoint import SinglePointCalculator
 from ase.io import read, write
+from jax_md import partition, space
 
 from erbs.cv.cv_nl import compute_cv_nl
 
@@ -20,6 +21,27 @@ def append_to_ds(ds, new_data, batch_dim=True):
         ds[-new_data.shape[0] :, ...] = new_data
 
 
+def build_energy_neighbor_fns(atoms, r_max, dr_threshold):
+    box = jnp.asarray(atoms.get_cell().lengths(), dtype=jnp.float32)
+
+    if np.all(box < 1e-6):
+        displacement_fn, _ = space.free()
+        box = 100
+    else:
+        displacement_fn, _ = space.periodic(box)
+
+    neighbor_fn = partition.neighbor_list(
+        displacement_fn,
+        box,
+        r_max,
+        dr_threshold,
+        fractional_coordinates=False,
+        format=partition.Sparse,
+    )
+
+    return neighbor_fn
+
+
 class GKernelBias(Calculator):
     implemented_properties = ["energy", "forces"]
 
@@ -29,7 +51,8 @@ class GKernelBias(Calculator):
         cv_fn,
         dim_reduction_factory,
         energy_fn_factory,
-        neighbor_fn,
+        r_max=6.0,
+        dr_threshold=0.5,
         interval=100,
         log_file="labels.hdf5",
         **kwargs
@@ -43,11 +66,12 @@ class GKernelBias(Calculator):
             )
         self.base_calc = base_calc
         self.log_file = log_file
+        self.r_max = r_max
+        self.dr_threshold = dr_threshold
 
         self.cv_fn = cv_fn
         self.dim_reduction_factory = dim_reduction_factory
         self.energy_fn_factory = energy_fn_factory
-        self.neighbor_fn = neighbor_fn
 
         self.energy_and_force_fn = None
 
@@ -56,12 +80,18 @@ class GKernelBias(Calculator):
         # ^ maybe introduce if we allow for reduction function update interval
         self.ref_atomic_numbers = []
         self.neighbors = None
+        self.neighbor_fn = None
 
         self.interval = interval
         self._step_counter = 0
         self.accumulate = True
         self.data_h5 = h5py.File(self.log_file, "w", libver="latest")
         self.initialized = False
+
+    def _initialize_nl(self, atoms):
+        self.neighbor_fn = build_energy_neighbor_fns(
+            atoms, self.r_max, self.dr_threshold
+        )
 
     def _initialize_g_ds(self):
         g_grp = self.data_h5.create_group("descriptors")
@@ -169,6 +199,9 @@ class GKernelBias(Calculator):
 
         if self._step_counter == 0:
             self._initialize_g_ds()
+            self._initialize_nl(atoms)
+        if len(self.ref_cvs) == 0:
+            self.add_configs([atoms])
 
         should_update_bias = self._step_counter % self.interval == 0
         if should_update_bias and self.accumulate:
@@ -191,7 +224,7 @@ class GKernelBias(Calculator):
         }
 
         if self._step_counter == 0:
-            self._initialize_label_ds()
+            self._initialize_label_ds()  # would writing else solve the label doubling?
         self.dump_labels()
 
         self.results = {
@@ -210,6 +243,9 @@ class GKernelBias(Calculator):
         for atoms in atoms_list:
             positions = jnp.array(atoms.positions, dtype=jnp.float32)
             numbers = jnp.array(atoms.numbers, dtype=jnp.int32)
+
+            if not self.neighbor_fn:
+                self._initialize_nl(atoms)
 
             if not self.neighbors or self.neighbors.did_buffer_overflow:
                 self.neighbors = self.neighbor_fn.allocate(positions)
