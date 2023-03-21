@@ -198,10 +198,9 @@ class GKernelBias(Calculator):
         self.base_results = self.base_calc.results
 
         if self._step_counter == 0:
+            self.add_configs([atoms])
             self._initialize_g_ds()
             self._initialize_nl(atoms)
-        if len(self.ref_cvs) == 0:
-            self.add_configs([atoms])
 
         should_update_bias = self._step_counter % self.interval == 0
         if should_update_bias and self.accumulate:
