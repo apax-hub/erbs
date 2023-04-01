@@ -6,19 +6,10 @@ import jax.numpy as jnp
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 from ase.calculators.singlepoint import SinglePointCalculator
-from ase.io import read, write
+from ase.io import write
 from jax_md import partition, space
 
 from erbs.cv.cv_nl import compute_cv_nl
-
-
-def append_to_ds(ds, new_data, batch_dim=True):
-    shape = ds.shape[0] + new_data.shape[0]
-    ds.resize(shape, axis=0)
-    if batch_dim:
-        ds[-new_data.shape[0], ...] = new_data
-    else:
-        ds[-new_data.shape[0] :, ...] = new_data
 
 
 def build_energy_neighbor_fns(atoms, r_max, dr_threshold):
@@ -51,10 +42,12 @@ class GKernelBias(Calculator):
         cv_fn,
         dim_reduction_factory,
         energy_fn_factory,
+        traj_file="unbiased.extxyz",
         r_max=6.0,
         dr_threshold=0.5,
         interval=100,
-        log_file="labels.hdf5",
+        cache_size=20,
+        # log_file="labels.hdf5",
         **kwargs
     ):
         Calculator.__init__(self, **kwargs)
@@ -65,7 +58,6 @@ class GKernelBias(Calculator):
                 "the ase's Calculator class"
             )
         self.base_calc = base_calc
-        self.log_file = log_file
         self.r_max = r_max
         self.dr_threshold = dr_threshold
 
@@ -85,71 +77,18 @@ class GKernelBias(Calculator):
         self.interval = interval
         self._step_counter = 0
         self.accumulate = True
-        self.data_h5 = h5py.File(self.log_file, "w", libver="latest")
+        self.traj_file = traj_file
         self.initialized = False
+        self.cache_size = cache_size
+        self.atoms_cache = []
 
     def _initialize_nl(self, atoms):
         self.neighbor_fn = build_energy_neighbor_fns(
             atoms, self.r_max, self.dr_threshold
         )
 
-    def _initialize_g_ds(self):
-        g_grp = self.data_h5.create_group("descriptors")
-        cv_shape = self.ref_cvs[0].shape
-        g_grp.create_dataset(
-            "full", data=self.ref_cvs[0], maxshape=(None, cv_shape[1]), dtype=np.float32
-        )
-        g_grp.create_dataset(
-            "atomic_numbers",
-            data=self.ref_atomic_numbers[0],
-            maxshape=(None,),
-            dtype=np.int32,
-        )
-
-    def _initialize_label_ds(self):
-        label_grp = self.data_h5.create_group("labels")
-        E_base = np.array([self.base_results["energy"]])
-        E_bias = np.array([self.bias_results["energy"]])
-
-        label_grp.create_dataset(
-            "energy", data=E_base, maxshape=(None,), dtype=np.float64
-        )
-        label_grp.create_dataset(
-            "energy_bias", data=E_bias, maxshape=(None,), dtype=np.float64
-        )
-
-        n_atoms = self.base_results["forces"].shape[0]
-        F_base = self.base_results["forces"][None, ...]
-        F_bias = self.bias_results["forces"][None, ...]
-        label_grp.create_dataset(
-            "forces", data=F_base, maxshape=(None, n_atoms, 3), dtype=np.float64
-        )
-        label_grp.create_dataset(
-            "forces_bias", data=F_bias, maxshape=(None, n_atoms, 3), dtype=np.float64
-        )
-
-    def dump_g(self):
-        append_to_ds(
-            self.data_h5["descriptors/full"], self.ref_cvs[-1], batch_dim=False
-        )
-        append_to_ds(
-            self.data_h5["descriptors/atomic_numbers"],
-            self.ref_atomic_numbers[-1],
-            batch_dim=False,
-        )
-
-    def dump_labels(self):
-        E_base = np.array([self.base_results["energy"]])
-        E_bias = np.array([self.bias_results["energy"]])
-        append_to_ds(self.data_h5["labels/energy"], E_base)
-        append_to_ds(self.data_h5["labels/energy_bias"], E_bias)
-
-        append_to_ds(
-            self.data_h5["labels/forces"], self.base_results["forces"][None, ...]
-        )
-        append_to_ds(
-            self.data_h5["labels/forces_bias"], self.bias_results["forces"][None, ...]
-        )
+    def dump_g(self, path):
+        np.savez(path, g=self.ref_cvs, z=self.ref_atomic_numbers)
 
     def update_bias(self, atoms):
         position = jnp.array(atoms.positions, dtype=jnp.float32)
@@ -199,13 +138,11 @@ class GKernelBias(Calculator):
 
         if self._step_counter == 0:
             self.add_configs([atoms])
-            self._initialize_g_ds()
             self._initialize_nl(atoms)
 
         should_update_bias = self._step_counter % self.interval == 0
         if should_update_bias and self.accumulate:
             self.update_bias(atoms)
-            self.dump_g()
 
         position = jnp.array(atoms.positions, dtype=jnp.float32)
         bias_results, self.neighbors = self.energy_and_force_fn(
@@ -218,19 +155,27 @@ class GKernelBias(Calculator):
             bias_results, self.neighbors = self.energy_and_force_fn(
                 position, self.neighbors
             )
-        self.bias_results = {
+        bias_results = {
             k: np.array(v, dtype=np.float64) for k, v in bias_results.items()
         }
 
-        if self._step_counter == 0:
-            self._initialize_label_ds()  # would writing else solve the label doubling?
-        self.dump_labels()
-
         self.results = {
-            "energy": self.base_results["energy"] + self.bias_results["energy"],
-            "forces": self.base_results["forces"] + self.bias_results["forces"],
+            "energy": self.base_results["energy"] + bias_results["energy"],
+            "forces": self.base_results["forces"] + bias_results["forces"],
         }
+
+        labeled_atoms = atoms.copy()
+        labeled_atoms.calc = SinglePointCalculator(labeled_atoms, **self.base_results)
+        self.atoms_cache.append(labeled_atoms)
         self._step_counter += 1
+
+        if (self._step_counter % self.cache_size) == 0:
+            self.dump_atoms()
+
+    def dump_atoms(self):
+        if len(self.atoms_cache) > 0:
+            write(self.traj_file, self.atoms_cache, format="extxyz", append=True)
+            self.atoms_cache = []
 
     def add_configs(self, atoms_list):
         @jax.jit
@@ -251,22 +196,3 @@ class GKernelBias(Calculator):
             g = calc_g(positions, self.neighbors)
             self.ref_cvs.append(np.asarray(g))
             self.ref_atomic_numbers.append(np.asarray(numbers))
-
-
-def unbias_trajectory(traj_path, label_path):
-    f = h5py.File(label_path, "r", libver="latest")
-    E_unbiased = np.array(f["labels/energy"])[1:]
-    F_unbiased = np.array(f["labels/forces"])[1:]
-
-    traj = read(traj_path, ":")
-    assert F_unbiased.shape[0] == len(traj)
-
-    for ii, atoms in enumerate(traj):
-        del atoms.calc
-        atoms.calc = SinglePointCalculator(
-            atoms, energy=E_unbiased[ii], forces=F_unbiased[ii]
-        )
-
-    new_traj_path = Path(traj_path)
-    new_traj_path = new_traj_path.with_stem(new_traj_path.stem + "_unbiased")
-    write(new_traj_path.as_posix(), traj)
