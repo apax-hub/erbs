@@ -1,11 +1,7 @@
-from pathlib import Path
-
 import jax
 import jax.numpy as jnp
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
-from ase.calculators.singlepoint import SinglePointCalculator
-from ase.io import write
 from jax_md import partition, space
 
 from erbs.cv.cv_nl import compute_cv_nl
@@ -41,12 +37,9 @@ class GKernelBias(Calculator):
         cv_fn,
         dim_reduction_factory,
         energy_fn_factory,
-        traj_file="unbiased.extxyz",
         r_max=6.0,
         dr_threshold=0.5,
         interval=100,
-        cache_size=20,
-        # log_file="labels.hdf5",
         **kwargs
     ):
         Calculator.__init__(self, **kwargs)
@@ -76,17 +69,13 @@ class GKernelBias(Calculator):
         self.interval = interval
         self._step_counter = 0
         self.accumulate = True
-        self.traj_file = traj_file
-        self.initialized = False
-        self.cache_size = cache_size
-        self.atoms_cache = []
 
     def _initialize_nl(self, atoms):
         self.neighbor_fn = build_energy_neighbor_fns(
             atoms, self.r_max, self.dr_threshold
         )
 
-    def dump_g(self, path):
+    def save_descriptors(self, path):
         np.savez(path, g=self.ref_cvs, z=self.ref_atomic_numbers)
 
     def update_bias(self, atoms):
@@ -161,20 +150,10 @@ class GKernelBias(Calculator):
         self.results = {
             "energy": self.base_results["energy"] + bias_results["energy"],
             "forces": self.base_results["forces"] + bias_results["forces"],
+            "energy_label": self.base_results["energy"],
+            "forces_label": self.base_results["forces"],
         }
-
-        labeled_atoms = atoms.copy()
-        labeled_atoms.calc = SinglePointCalculator(labeled_atoms, **self.base_results)
-        self.atoms_cache.append(labeled_atoms)
         self._step_counter += 1
-
-        if (self._step_counter % self.cache_size) == 0:
-            self.dump_atoms()
-
-    def dump_atoms(self):
-        if len(self.atoms_cache) > 0:
-            write(self.traj_file, self.atoms_cache, format="extxyz", append=True)
-            self.atoms_cache = []
 
     def add_configs(self, atoms_list):
         @jax.jit
