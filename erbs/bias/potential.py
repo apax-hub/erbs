@@ -70,6 +70,8 @@ class GKernelBias(Calculator):
         self._step_counter = 0
         self.accumulate = True
 
+        self.min_energy = np.inf
+
     def _initialize_nl(self, atoms):
         self.neighbor_fn = build_energy_neighbor_fns(
             atoms, self.r_max, self.dr_threshold
@@ -105,13 +107,14 @@ class GKernelBias(Calculator):
             self.dim_reduction_factory.create_dim_reduction_fn(),
             numbers,
             reduced_ref_cvs,
+            sorted_ref_numbers,
             g_neighbors,
         )
 
         @jax.jit
-        def body_fn(positions, neighbor):
+        def body_fn(positions, neighbor, current_energy, min_energy):
             neighbor = neighbor.update(positions)
-            energy, neg_forces = jax.value_and_grad(energy_fn)(positions, neighbor)
+            energy, neg_forces = jax.value_and_grad(energy_fn)(positions, neighbor, current_energy, min_energy)
             forces = -neg_forces
 
             return {"energy": energy, "forces": forces}, neighbor
@@ -124,8 +127,11 @@ class GKernelBias(Calculator):
         self.base_calc.calculate(atoms, properties, system_changes)
         self.base_results = self.base_calc.results
 
+        if self.base_results["energy"] < self.min_energy:
+            self.min_energy = self.base_results["energy"]
+
         if self._step_counter == 0:
-            self.add_configs([atoms])
+            # self.add_configs([atoms])
             self._initialize_nl(atoms)
 
         should_update_bias = self._step_counter % self.interval == 0
@@ -134,18 +140,20 @@ class GKernelBias(Calculator):
 
         position = jnp.array(atoms.positions, dtype=jnp.float32)
         bias_results, self.neighbors = self.energy_and_force_fn(
-            position, self.neighbors
+            position, self.neighbors, self.base_results["energy"], self.min_energy
         )
 
         if self.neighbors.did_buffer_overflow:
             print("neighbor list overflowed, reallocating.")
             self.neighbors = self.neighbor_fn.allocate(position)
             bias_results, self.neighbors = self.energy_and_force_fn(
-                position, self.neighbors
+                position, self.neighbors, self.base_results["energy"], self.min_energy
             )
         bias_results = {
             k: np.array(v, dtype=np.float64) for k, v in bias_results.items()
         }
+        # print(bias_results["energy"])
+
 
         self.results = {
             "energy": self.base_results["energy"] + bias_results["energy"],
