@@ -37,7 +37,7 @@ class OPESExploreFactory:
         n_elements = np.max(elements) + 1
 
         mc_norm = np.zeros(n_elements) # Z in the paper
-        print()
+        # print()
 
         for element in elements:
             g_filtered = g_ref[Z==element]
@@ -49,9 +49,9 @@ class OPESExploreFactory:
             # print(G_skk)
             G_skk = np.sum(G_skk)
             # print(G_skk)
-            Zn = G_skk/ g_filtered.shape[0]
-            print(G_skk, Zn, g_filtered.shape[0])
-            mc_norm[element] = g_filtered.shape[0] #Zn
+            Zn = G_skk / g_filtered.shape[0]
+            # print(G_skk, Zn, g_filtered.shape[0])
+            mc_norm[element] = Zn
         # print(mc_norm)
         # quit()
         return jnp.asarray(mc_norm)
@@ -70,8 +70,12 @@ class OPESExploreFactory:
         # print(self.dE)
         # print((self.dE * self.beta / (self.gamma - 1.0))/n_atoms * (self.gamma - 1.0) / self.beta * n_atoms)
         # quit()
+        # prefactor = (self.gamma - 1.0) / self.beta
+        # print(prefactor)
+        # print(jnp.exp(-(self.dE * self.beta / (self.gamma - 1.0))/(n_atoms)), jnp.exp(-(self.dE * self.beta / (self.gamma - 1.0))))
+        # quit()
 
-        def energy_fn(positions, neighbor):
+        def energy_fn(positions, neighbor, A_curr, A_min):
             g = cv_fn(positions, neighbor)
             g_reduced = vmap(dim_reduction_fn, 0, 0)(g, Z)
             g_diff = g_reduced[g_nl[0]] - g_ref[g_nl[1]]
@@ -81,16 +85,23 @@ class OPESExploreFactory:
             # unnormalized_prob_i = jax.ops.segment_sum(kde_ij, g_nl[0], num_segments=n_atoms)
             # prob_i = unnormalized_prob_i / mc_norm[Z]
 
-            eps = jnp.exp(-(self.dE * self.beta / (self.gamma - 1.0))/n_atoms)
-            bias_i = jnp.log(prob_i + eps)
-
+            # prefactor = 1/ self.beta
             prefactor = (self.gamma - 1.0) / self.beta
-            # bias_i = prefactor * unscaled_bias_i
+            eps = jnp.exp(-(self.dE / prefactor )/(n_atoms))
+            
+            bias_i = prefactor * jnp.log(prob_i + eps)
+            total_bias = jnp.sum(bias_i) + self.dE
 
+            # debug.print("")
+            # debug.print("g_nl[0] {x}", x=g_nl[0])
+            # debug.print("unnormalized_prob_i {x}", x=unnormalized_prob_i)
+            # debug.print("prob_i {x}", x=prob_i)
+            # debug.print("mc_norm[Z] {x}", x=mc_norm[Z])
             # debug.print("eps {x}", x=eps)
-            # debug.print("bias_i {x}", x=bias_i + self.dE)
+            # debug.print("bias_i {x}", x=bias_i)
+            # debug.print("total_bias {x}", x=total_bias)
 
-            return prefactor * jnp.sum(bias_i) # bias_i
+            return total_bias # bias_i
 
         return energy_fn
 
@@ -118,7 +129,6 @@ class MetaDCutFactory:
 
             # prob_i = segment_mean(kde_ij, g_nl[0], num_segments=n_atoms)
             bias_i = jax.ops.segment_sum(bias_ij, g_nl[0], num_segments=n_atoms)
-            # debug.print("")
             # debug.print("bias_ij {x}", x=bias_ij)
             
             # bias = jnp.sum(bias_i)
@@ -134,17 +144,34 @@ class MetaDCutFactory:
             # bias_limited = (self.E_max + A_min - A_curr) * jnp.sin(np.pi/2 * bias_clipped / self.E_max)# should be smooth at 0 too e.g via sigmoid
             # bias_clipped = jnp.clip(bias_limited, a_min=0.0)
 
-            bias_clipped = jnp.clip(bias_i, a_max=self.E_max)
-            bias_limited = self.E_max* jnp.sin(np.pi/2 * bias_clipped / self.E_max)# should this be smooth at 0 too e.g via sigmoid
-            bias_clipped = jnp.clip(bias_limited, a_min=0.0)
+            # bias_clipped = jnp.clip(bias_i, a_max=self.E_max)
+            # # bias_limited = self.E_max* jnp.sin(np.pi/2 * bias_clipped / self.E_max)# should this be smooth at 0 too e.g via sigmoid
+            # bias_cutoff = jnp.sin(np.pi/2 * bias_clipped / self.E_max)
+            # bias = jnp.sum(bias_cutoff)
+            # bias_scaled = (self.E_max * n_atoms + A_min - A_curr) * bias
+            # bias_scaled_clipped = jnp.clip(bias_scaled, a_min=0.0)
 
-            # debug.print("np.pi/2 * bias / self.E_max {x}", x=np.pi/2 * bias / self.E_max)
-            # debug.print("jnp.sin(np.pi/2 * bias / self.E_max) {x}", x=jnp.sin(np.pi/2 * bias / self.E_max))
-            # debug.print("bias_limited {x}", x=bias_limited)
-            # bias_limited = jnp.where(bias_limited < self.E_max, bias_limited, self.E_max)
-            # debug.print("bias_where {x}", x=bias_limited)
+
+            bias_clipped = jnp.clip(bias_i, a_max=self.E_max)
+            # bias_limited = self.E_max* jnp.sin(np.pi/2 * bias_clipped / self.E_max)# should this be smooth at 0 too e.g via sigmoid
+            bias_cutoff = (self.E_max*n_atoms + A_min - A_curr)/n_atoms * jnp.sin(np.pi/2 * bias_clipped / self.E_max)
+            bias = jnp.sum(bias_cutoff)
+            # bias_scaled = (self.E_max * n_atoms + A_min - A_curr) * bias
+            bias_scaled_clipped = jnp.clip(bias, a_min=0.0)
+
+            # debug.print("")
+            # debug.print("bias_i {x}", x=bias_i)
+            # debug.print("bias_clipped {x}", x=bias_clipped)
+            # debug.print("bias_cutoff{x}", x=bias_cutoff)
+            # debug.print("bias {x}", x=bias)
+            # debug.print("(self.E_max * n_atoms + A_min - A_curr) {x}", x=(self.E_max * n_atoms + A_min - A_curr))
+            # debug.print("(self.E_max * n_atoms ) {x}", x=(self.E_max * n_atoms ))
+            # debug.print("( A_min - A_curr) {x}", x=( A_min - A_curr))
+            # # bias_limited = jnp.where(bias_limited < self.E_max, bias_limited, self.E_max)
+            # # debug.print("bias_scaled {x}", x=bias_scaled)
+            # debug.print("bias_scaled_clipped {x}", x=bias_scaled_clipped)
            
 
-            return jnp.sum(bias_limited)
+            return bias_scaled_clipped #jnp.sum(bias_limited)
 
         return energy_fn
