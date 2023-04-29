@@ -93,7 +93,7 @@ class GKernelBias(Calculator):
             print("neighbor list overflowed, reallocating.")
             self.neighbors = self.neighbor_fn.allocate(position)
 
-        g_new = self.cv_fn(position, self.neighbors)
+        g_new = self.cv_fn(position, numbers, self.neighbors.idx)
         self.ref_cvs.append(g_new)
         self.ref_atomic_numbers.append(atoms.numbers)
 
@@ -131,7 +131,6 @@ class GKernelBias(Calculator):
             self.min_energy = self.base_results["energy"]
 
         if self._step_counter == 0:
-            # self.add_configs([atoms])
             self._initialize_nl(atoms)
 
         should_update_bias = self._step_counter % self.interval == 0
@@ -152,7 +151,6 @@ class GKernelBias(Calculator):
         bias_results = {
             k: np.array(v, dtype=np.float64) for k, v in bias_results.items()
         }
-        # print(bias_results["energy"])
 
 
         self.results = {
@@ -165,9 +163,9 @@ class GKernelBias(Calculator):
 
     def add_configs(self, atoms_list):
         @jax.jit
-        def calc_g(positions, neighbors):
+        def calc_g(positions, Z, neighbors):
             neighbors = neighbors.update(positions)
-            g = self.cv_fn(positions, neighbors)
+            g = self.cv_fn(positions, Z, neighbors.idx)
             return g
 
         for atoms in atoms_list:
@@ -179,6 +177,20 @@ class GKernelBias(Calculator):
 
             if not self.neighbors or self.neighbors.did_buffer_overflow:
                 self.neighbors = self.neighbor_fn.allocate(positions)
-            g = calc_g(positions, self.neighbors)
+            Z = jnp.asarray(atoms.numbers)
+            g = calc_g(positions, Z, self.neighbors)
             self.ref_cvs.append(np.asarray(g))
             self.ref_atomic_numbers.append(np.asarray(numbers))
+
+    def load_descriptors(self, path):
+        data = np.load(path)
+        descriptors = data["g"]
+        numbers = data["z"]
+
+
+        descriptors = [entry for entry in descriptors]
+        numbers = [entry for entry in numbers]
+
+        self.ref_cvs.extend(descriptors)
+        self.ref_atomic_numbers.extend(numbers)
+
