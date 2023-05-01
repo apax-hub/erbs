@@ -33,13 +33,14 @@ class OPESExploreFactory:
 
     def create(self, cv_fn, dim_reduction_fn, Z, g_ref, Z_ref, g_nl):
         n_atoms = Z.shape[0]
+        Z = jnp.asarray(Z)
         cv_dim = g_ref.shape[-1]
 
         self.a = self.std ** (cv_dim * 2)
         self.k = 1 / (np.sqrt(2.0 * np.pi * self.std**2) **cv_dim )
 
         def energy_fn(positions, neighbor, A_curr, A_min):
-            g = cv_fn(positions, neighbor)
+            g = cv_fn(positions, Z, neighbor.idx)
             g_reduced = vmap(dim_reduction_fn, 0, 0)(g, Z)
             g_diff = g_reduced[g_nl[0]] - g_ref[g_nl[1]]
             kde_ij = vmap(gaussian, (0, None, None), 0)(g_diff, self.k, self.a)
