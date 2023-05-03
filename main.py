@@ -1,5 +1,5 @@
 from erbs.bias import GKernelBias
-from erbs.dim_reduction import ElementwisePCA
+from erbs.dim_reduction import ElementwisePCA, ElementwiseLocalPCA
 from erbs.bias import energy_fn_factory, OPESExploreFactory, MetaDCutFactory
 from erbs.transformations import repartition_hydrogen_mass
 from erbs.descriptor import RBFDescriptorFlax
@@ -32,7 +32,8 @@ r_max = 6.0
 
 # TODO PROBLEM: CVS ONLY CORRESPOND TO ATOM IDENTITY, NOT CONFORMATIONAL DOFS
 # visualize in plot
-# Solution? sensitivity matrix
+# Solution? sensitivity matrix -> too ill conditioned
+
 
 
 # descriptor = RBFDescriptorFlax(r_max=r_max)
@@ -59,8 +60,8 @@ bias_interval = 100
 cache_size = 20
 
 # name = "opes_n5_gm3_kb8_a06_pca3_300k"
-name = "opes_min11_r6_n5_c2_d2_a03_kb10_t300"
-traj_file = f"gmnn_test/{name}.extxyz"
+name = "cluster_n4_c8_d3_kb6_a05_t300_2"
+traj_file = f"cluster_test/{name}.extxyz"
 
 # g_path = "gmnn_test/opes_n5_gm3_kb4_a05_pca2_300k.npz"
 # print(units.kB*T)
@@ -69,11 +70,12 @@ traj_file = f"gmnn_test/{name}.extxyz"
 
 # print()
 # quit()
-zpca = ElementwisePCA(2)
+# zpca = ElementwisePCA(2)
+zpca = ElementwiseLocalPCA(3, 5)
 
-dE = units.kB*T *10#/ len(atoms)
+dE = units.kB*T *6#/ len(atoms)
 # dE = 0.046 / len(atoms) - units.kB*T
-energy_fn_factory = OPESExploreFactory(T=T, dE=dE, a=0.3)
+energy_fn_factory = OPESExploreFactory(T=T, dE=dE, a=1.0)
 # E_max=1.5/ 22
 # energy_fn_factory = MetaDCutFactory(k=0.01, a=0.3, E_max=E_max)
 

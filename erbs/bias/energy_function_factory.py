@@ -18,7 +18,7 @@ def energy_fn_factory(cv_fn, dim_reduction_fn, Z, g_ref, g_nl, k, a):
         return jnp.sum(bias)
 
     return energy_fn
-
+from jax import debug
 
 class OPESExploreFactory:
     def __init__(self, T=300, dE=1.2, a=0.3) -> None:
@@ -31,9 +31,10 @@ class OPESExploreFactory:
         self.dE = dE
         self.gamma = self.dE * self.beta
 
-    def create(self, cv_fn, dim_reduction_fn, Z, g_ref, Z_ref, g_nl):
+    def create(self, cv_fn, dim_reduction_fn, Z, cluster_idxs, g_ref, g_nl):
         n_atoms = Z.shape[0]
         Z = jnp.asarray(Z)
+        cluster_idxs = jnp.asarray(cluster_idxs)
         cv_dim = g_ref.shape[-1]
 
         self.a = self.std ** (cv_dim * 2)
@@ -41,7 +42,7 @@ class OPESExploreFactory:
 
         def energy_fn(positions, neighbor, A_curr, A_min):
             g = cv_fn(positions, Z, neighbor.idx)
-            g_reduced = vmap(dim_reduction_fn, 0, 0)(g, Z)
+            g_reduced = vmap(dim_reduction_fn, 0, 0)(g, cluster_idxs)
             g_diff = g_reduced[g_nl[0]] - g_ref[g_nl[1]]
             kde_ij = vmap(gaussian, (0, None, None), 0)(g_diff, self.k, self.a)
 
@@ -52,6 +53,8 @@ class OPESExploreFactory:
             
             bias_i = prefactor * jnp.log(prob_i + eps)
             total_bias = jnp.sum(bias_i) + self.dE
+
+            # debug.breakpoint()
 
             return total_bias
 

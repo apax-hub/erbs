@@ -53,7 +53,7 @@ class GKernelBias(Calculator):
         self.r_max = r_max
         self.dr_threshold = dr_threshold
 
-        self.cv_fn = cv_fn
+        self.cv_fn = jax.jit(cv_fn)
         self.dim_reduction_factory = dim_reduction_factory
         self.energy_fn_factory = energy_fn_factory
 
@@ -100,14 +100,18 @@ class GKernelBias(Calculator):
         reduced_ref_cvs, sorted_ref_numbers = self.dim_reduction_factory.fit_transform(
             self.ref_cvs, self.ref_atomic_numbers
         )
-        g_neighbors = compute_cv_nl(atoms.numbers, sorted_ref_numbers)
+        cluster_idxs = self.dim_reduction_factory.apply_clustering(g_new, atoms.numbers)
+        g_neighbors = compute_cv_nl(cluster_idxs, sorted_ref_numbers) #atoms.numbers, sorted_ref_numbers)
+        # print(g_neighbors)
+        # quit()
 
         energy_fn = self.energy_fn_factory.create(
             self.cv_fn,
             self.dim_reduction_factory.create_dim_reduction_fn(),
             numbers,
+            cluster_idxs,
             reduced_ref_cvs,
-            sorted_ref_numbers,
+            # sorted_ref_numbers,
             g_neighbors,
         )
 
