@@ -80,6 +80,7 @@ class GKernelBias(Calculator):
     def save_descriptors(self, path):
         np.savez(path, g=self.ref_cvs, z=self.ref_atomic_numbers)
 
+
     def update_bias(self, atoms):
         position = jnp.array(atoms.positions, dtype=jnp.float32)
         numbers = jnp.array(atoms.numbers, dtype=jnp.int32)
@@ -108,10 +109,11 @@ class GKernelBias(Calculator):
         energy_fn = self.energy_fn_factory.create(
             self.cv_fn,
             self.dim_reduction_factory.create_dim_reduction_fn(),
+            self.dim_reduction_factory.cluster_models,
             numbers,
             cluster_idxs,
             reduced_ref_cvs,
-            # sorted_ref_numbers,
+            sorted_ref_numbers,
             g_neighbors,
         )
 

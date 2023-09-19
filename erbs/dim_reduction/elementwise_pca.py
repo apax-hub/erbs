@@ -80,8 +80,7 @@ class ElementwiseLocalPCA:
         self.sigmaT = None
 
         self.clusters_per_element = [None] * 119
-        self.cluster_models = [None] * 119
-        self.cluster_offset_per_element = None
+        self.cluster_models = {}
         self.cluster_offset_per_element = np.zeros(119, dtype=np.int32)
 
     def determine_cluster_range(self, element, n_samples):
@@ -134,27 +133,21 @@ class ElementwiseLocalPCA:
         mu = []
         sigmaT = []
         total_n_clusters = 0
+        # self.cluster_element_mapping = {}#{i: [] for i in range(119)}
         
 
         for element in elements:
             g_z = g[Z == element]
             
-            
-            # print("ELEMENT", element)
             cluster_model = self.fit_clustering(element, g_z)
             self.cluster_models[element] = cluster_model
+            # self.cluster_element_mapping[element]
             labels = cluster_model.labels_
             n_clusters = cluster_model.n_clusters
-            # print("n clusters", n_clusters)
-
-            # print(labels)
             for cluster_idx in range(n_clusters):
-                # print(cluster_idx)
+                # self.cluster_element_mapping[element].append
                 g_cluster = g_z[labels==cluster_idx]
                 idxs = labels[labels==cluster_idx] + total_n_clusters
-                # print(idxs)
-
-                # print()
                 n_samples = g_cluster.shape[0]
                 if n_samples < self.n_components:
                     mean = np.mean(g_cluster, axis=0)
@@ -190,21 +183,14 @@ class ElementwiseLocalPCA:
         g = np.asarray(g)
         Z = np.asarray(Z)
 
-        cluster_idxs = [] # TODO WRONG TOTAL NUMBER OF CLUSTERS!!
-        # total_n_clusters = 0
-        # seen_Zs = []
+        cluster_idxs = []
         for i, z in enumerate(Z):
-            # print(z)
             if self.cluster_models[z] is None:
                 raise ValueError(f"No clustering found for element {z}")
             gi = g[i][None,:]
             cluster_idx = self.cluster_models[z].predict(gi) 
             cluster_idxs.append(cluster_idx + self.cluster_offset_per_element[z])
-            # if z not in seen_Zs:
-            #     seen_Zs.append(z)
-            #     total_n_clusters += 1
-        # print(cluster_idxs)
-        # quit()
+
         cluster_idxs = jnp.array(cluster_idxs, dtype=jnp.int32)
         cluster_idxs = np.reshape(cluster_idxs, (-1,))
         return cluster_idxs
