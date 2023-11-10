@@ -4,8 +4,6 @@ from ase.neighborlist import build_neighbor_list
 def repartition_hydrogen_mass(atoms, h_mass_scale=3.0):
     atoms = atoms.copy()
 
-    h_mass_scale = 3
-
     nl = build_neighbor_list(atoms, self_interaction=False)
     cm = nl.get_connectivity_matrix(sparse=False)
     z = atoms.get_atomic_numbers()
