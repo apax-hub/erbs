@@ -103,8 +103,6 @@ class GKernelBias(Calculator):
         )
         cluster_idxs = self.dim_reduction_factory.apply_clustering(g_new, atoms.numbers)
         g_neighbors = compute_cv_nl(cluster_idxs, sorted_ref_numbers) #atoms.numbers, sorted_ref_numbers)
-        # print(g_neighbors)
-        # quit()
 
         energy_fn = self.energy_fn_factory.create(
             self.cv_fn,
@@ -157,7 +155,6 @@ class GKernelBias(Calculator):
         bias_results = {
             k: np.array(v, dtype=np.float64) for k, v in bias_results.items()
         }
-
 
         self.results = {
             "energy": self.base_results["energy"] + bias_results["energy"],
