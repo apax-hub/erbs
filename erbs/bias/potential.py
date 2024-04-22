@@ -53,7 +53,7 @@ class GKernelBias(Calculator):
         self.r_max = r_max
         self.dr_threshold = dr_threshold
 
-        self.cv_fn = cv_fn
+        self.cv_fn = jax.jit(cv_fn)
         self.dim_reduction_factory = dim_reduction_factory
         self.energy_fn_factory = energy_fn_factory
 
@@ -70,6 +70,8 @@ class GKernelBias(Calculator):
         self._step_counter = 0
         self.accumulate = True
 
+        self.min_energy = np.inf
+
     def _initialize_nl(self, atoms):
         self.neighbor_fn = build_energy_neighbor_fns(
             atoms, self.r_max, self.dr_threshold
@@ -77,6 +79,7 @@ class GKernelBias(Calculator):
 
     def save_descriptors(self, path):
         np.savez(path, g=self.ref_cvs, z=self.ref_atomic_numbers)
+
 
     def update_bias(self, atoms):
         position = jnp.array(atoms.positions, dtype=jnp.float32)
@@ -91,27 +94,31 @@ class GKernelBias(Calculator):
             print("neighbor list overflowed, reallocating.")
             self.neighbors = self.neighbor_fn.allocate(position)
 
-        g_new = self.cv_fn(position, self.neighbors)
+        g_new = self.cv_fn(position, numbers, self.neighbors.idx)
         self.ref_cvs.append(g_new)
         self.ref_atomic_numbers.append(atoms.numbers)
 
         reduced_ref_cvs, sorted_ref_numbers = self.dim_reduction_factory.fit_transform(
             self.ref_cvs, self.ref_atomic_numbers
         )
-        g_neighbors = compute_cv_nl(atoms.numbers, sorted_ref_numbers)
+        cluster_idxs = self.dim_reduction_factory.apply_clustering(g_new, atoms.numbers)
+        g_neighbors = compute_cv_nl(cluster_idxs, sorted_ref_numbers) #atoms.numbers, sorted_ref_numbers)
 
         energy_fn = self.energy_fn_factory.create(
             self.cv_fn,
             self.dim_reduction_factory.create_dim_reduction_fn(),
+            self.dim_reduction_factory.cluster_models,
             numbers,
+            cluster_idxs,
             reduced_ref_cvs,
+            sorted_ref_numbers,
             g_neighbors,
         )
 
         @jax.jit
-        def body_fn(positions, neighbor):
+        def body_fn(positions, neighbor, current_energy, min_energy):
             neighbor = neighbor.update(positions)
-            energy, neg_forces = jax.value_and_grad(energy_fn)(positions, neighbor)
+            energy, neg_forces = jax.value_and_grad(energy_fn)(positions, neighbor, current_energy, min_energy)
             forces = -neg_forces
 
             return {"energy": energy, "forces": forces}, neighbor
@@ -124,8 +131,10 @@ class GKernelBias(Calculator):
         self.base_calc.calculate(atoms, properties, system_changes)
         self.base_results = self.base_calc.results
 
+        if self.base_results["energy"] < self.min_energy:
+            self.min_energy = self.base_results["energy"]
+
         if self._step_counter == 0:
-            self.add_configs([atoms])
             self._initialize_nl(atoms)
 
         should_update_bias = self._step_counter % self.interval == 0
@@ -134,14 +143,14 @@ class GKernelBias(Calculator):
 
         position = jnp.array(atoms.positions, dtype=jnp.float32)
         bias_results, self.neighbors = self.energy_and_force_fn(
-            position, self.neighbors
+            position, self.neighbors, self.base_results["energy"], self.min_energy
         )
 
         if self.neighbors.did_buffer_overflow:
             print("neighbor list overflowed, reallocating.")
             self.neighbors = self.neighbor_fn.allocate(position)
             bias_results, self.neighbors = self.energy_and_force_fn(
-                position, self.neighbors
+                position, self.neighbors, self.base_results["energy"], self.min_energy
             )
         bias_results = {
             k: np.array(v, dtype=np.float64) for k, v in bias_results.items()
@@ -157,9 +166,9 @@ class GKernelBias(Calculator):
 
     def add_configs(self, atoms_list):
         @jax.jit
-        def calc_g(positions, neighbors):
+        def calc_g(positions, Z, neighbors):
             neighbors = neighbors.update(positions)
-            g = self.cv_fn(positions, neighbors)
+            g = self.cv_fn(positions, Z, neighbors.idx)
             return g
 
         for atoms in atoms_list:
@@ -171,6 +180,20 @@ class GKernelBias(Calculator):
 
             if not self.neighbors or self.neighbors.did_buffer_overflow:
                 self.neighbors = self.neighbor_fn.allocate(positions)
-            g = calc_g(positions, self.neighbors)
+            Z = jnp.asarray(atoms.numbers)
+            g = calc_g(positions, Z, self.neighbors)
             self.ref_cvs.append(np.asarray(g))
             self.ref_atomic_numbers.append(np.asarray(numbers))
+
+    def load_descriptors(self, path):
+        data = np.load(path)
+        descriptors = data["g"]
+        numbers = data["z"]
+
+
+        descriptors = [entry for entry in descriptors]
+        numbers = [entry for entry in numbers]
+
+        self.ref_cvs.extend(descriptors)
+        self.ref_atomic_numbers.extend(numbers)
+
