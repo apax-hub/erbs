@@ -52,6 +52,7 @@ coverage.xml
 .pytest_cache/
 raw_data/
 model_files/
+main.py
 *csv
 tmp/
 .npz
