@@ -30,14 +30,6 @@ box = jnp.asarray(atoms.get_cell().lengths())
 
 r_max = 6.0
 
-# TODO PROBLEM: CVS ONLY CORRESPOND TO ATOM IDENTITY, NOT CONFORMATIONAL DOFS
-# visualize in plot
-# Solution? sensitivity matrix -> too ill conditioned
-
-
-
-# descriptor = RBFDescriptorFlax(r_max=r_max)
-
 descriptor = GaussianMomentDescriptor(
     radial_fn=RadialFunction(
         4,
@@ -56,12 +48,13 @@ ts=2.0
 friction=0.001
 # write_interval=1
 remaining_steps = 10000
-bias_interval = 100
+bias_interval = 2000
 cache_size = 20
 
 # name = "opes_n5_gm3_kb8_a06_pca3_300k"
-name = "cluster_n4_c8_d3_kb6_a05_t300_2"
-traj_file = f"cluster_test/{name}.extxyz"
+# name = "elementwise_interval2000_a015_2"
+name = "elementwise_interval2000_a015_300k_m2_2"
+traj_file = f"talk_data/{name}.extxyz"
 
 # g_path = "gmnn_test/opes_n5_gm3_kb4_a05_pca2_300k.npz"
 # print(units.kB*T)
@@ -73,9 +66,9 @@ traj_file = f"cluster_test/{name}.extxyz"
 # zpca = ElementwisePCA(2)
 zpca = ElementwiseLocalPCA(3, 5)
 
-dE = units.kB*T *6#/ len(atoms)
+dE = units.kB*T *3#/ len(atoms)
 # dE = 0.046 / len(atoms) - units.kB*T
-energy_fn_factory = OPESExploreFactory(T=T, dE=dE, a=1.0)
+energy_fn_factory = OPESExploreFactory(T=T, dE=dE, a=1.5)
 # E_max=1.5/ 22
 # energy_fn_factory = MetaDCutFactory(k=0.01, a=0.3, E_max=E_max)
 
@@ -139,7 +132,7 @@ ax[0].plot(En)
 ax[0].plot(En + bias)
 # ax[1].axhline(1, color="grey")
 ax[1].plot(bias)
-plt.savefig("traj6.png", dpi=300)
+plt.savefig("traj7.png", dpi=300)
 plt.show()
 
 
