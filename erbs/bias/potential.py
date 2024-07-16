@@ -91,7 +91,6 @@ class GKernelBias(Calculator):
         self._step_counter = 0
         self.accumulate = True
 
-        self.min_energy = np.inf
 
     def _initialize_nl(self, atoms):
         self.cv_fn, self.neighbor_fn = build_feature_neighbor_fns(
@@ -127,7 +126,7 @@ class GKernelBias(Calculator):
             self.ref_cvs, self.ref_atomic_numbers
         )
         cluster_idxs = self.dim_reduction_factory.apply_clustering(g_new, atoms.numbers)
-        g_neighbors = compute_cv_nl(cluster_idxs, sorted_ref_numbers) #atoms.numbers, sorted_ref_numbers)
+        g_neighbors = compute_cv_nl(cluster_idxs, sorted_ref_numbers)
 
         energy_fn = self.energy_fn_factory.create(
             self.cv_fn,
@@ -141,9 +140,9 @@ class GKernelBias(Calculator):
         )
 
         @jax.jit
-        def body_fn(positions, neighbor, box, offsets):
+        def body_fn(positions, neighbor, box):
             neighbor = neighbor.update(positions)
-            energy, neg_forces = jax.value_and_grad(energy_fn)(positions, neighbor, box, offsets)
+            energy, neg_forces = jax.value_and_grad(energy_fn)(positions, neighbor, box)
             forces = -neg_forces
 
             return {"energy": energy, "forces": forces}, neighbor
@@ -154,10 +153,10 @@ class GKernelBias(Calculator):
         Calculator.calculate(self, atoms, properties, system_changes)
 
         self.base_calc.calculate(atoms, properties, system_changes)
-        self.base_results = self.base_calc.results
+        self.results = self.base_calc.results
 
-        if self.base_results["energy"] < self.min_energy:
-            self.min_energy = self.base_results["energy"]
+        positions = jnp.asarray(atoms.positions, dtype=jnp.float64)
+        box = jnp.asarray(atoms.cell.array, dtype=jnp.float64)
 
         if self._step_counter == 0:
             self._initialize_nl(atoms)
@@ -166,25 +165,23 @@ class GKernelBias(Calculator):
         if should_update_bias and self.accumulate:
             self.update_bias(atoms)
 
-        position = jnp.array(atoms.positions, dtype=jnp.float32)
         bias_results, self.neighbors = self.energy_and_force_fn(
-            position, self.neighbors, self.base_results["energy"], self.min_energy
+            positions, self.neighbors, box,
         )
 
         if self.neighbors.did_buffer_overflow:
             print("neighbor list overflowed, reallocating.")
-            self.neighbors = self.neighbor_fn.allocate(position)
+            self.neighbors = self.neighbor_fn.allocate(positions)
             bias_results, self.neighbors = self.energy_and_force_fn(
-                position, self.neighbors, self.base_results["energy"], self.min_energy
+                positions, self.neighbors, box
             )
         bias_results = {
             k: np.array(v, dtype=np.float64) for k, v in bias_results.items()
         }
 
-        self.results = {
-            "energy": self.base_results["energy"] + bias_results["energy"],
-            "forces": self.base_results["forces"] + bias_results["forces"],
-        }
+        self.results["energy"] =  self.results["energy"] + bias_results["energy"],
+        self.results["forces"] =  self.results["forces"] + bias_results["forces"],
+
         self._step_counter += 1
 
     def add_configs(self, atoms_list):
