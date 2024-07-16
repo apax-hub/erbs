@@ -5,7 +5,7 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax_md import space
+from apax.utils.jax_md_reduced import space
 
 
 class RBFDescriptorFlax(nn.Module):
