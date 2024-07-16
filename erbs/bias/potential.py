@@ -1,31 +1,49 @@
+from functools import partial
 import jax
 import jax.numpy as jnp
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
-from jax_md import partition, space
+from apax.utils.jax_md_reduced import partition, space
+from apax.model.gmnn import FeatureModel
+from apax.layers.descriptor.basis_functions import RadialFunction, GaussianBasis
+from apax.layers.descriptor import GaussianMomentDescriptor
 
 from erbs.cv.cv_nl import compute_cv_nl
 
 
-def build_energy_neighbor_fns(atoms, r_max, dr_threshold):
-    box = jnp.asarray(atoms.get_cell().lengths(), dtype=jnp.float32)
+def build_feature_neighbor_fns(atoms, n_basis, r_min, r_max, dr_threshold):
+    box = np.asarray(atoms.get_cell().lengths(), dtype=jnp.float32)
 
     if np.all(box < 1e-6):
         displacement_fn, _ = space.free()
-        box = 100
     else:
-        displacement_fn, _ = space.periodic(box)
+        displacement_fn, _ = space.periodic_general(box, fractional_coordinates=True)
 
     neighbor_fn = partition.neighbor_list(
         displacement_fn,
         box,
         r_max,
         dr_threshold,
-        fractional_coordinates=False,
+        fractional_coordinates=True,
+        disable_cell_list=True,
         format=partition.Sparse,
     )
 
-    return neighbor_fn
+    # I could also just supply the descriptor and construct the (non) periodic feature model here
+    descriptor = GaussianMomentDescriptor(
+        radial_fn=RadialFunction(
+            n_basis,
+            basis_fn=GaussianBasis(
+                n_basis=n_basis,
+                r_min=r_min,
+                r_max=r_max,
+            ),
+            emb_init=None),
+        n_contr=8
+    )
+    feature_model = FeatureModel(descriptor, readout=None, init_box=box)
+    feature_fn = partial(feature_model.apply, {})
+    return feature_fn, neighbor_fn
 
 
 class GKernelBias(Calculator):
@@ -34,9 +52,10 @@ class GKernelBias(Calculator):
     def __init__(
         self,
         base_calc,
-        cv_fn,
         dim_reduction_factory,
         energy_fn_factory,
+        n_basis = 4,
+        r_min=1.1,
         r_max=6.0,
         dr_threshold=0.5,
         interval=100,
@@ -50,10 +69,12 @@ class GKernelBias(Calculator):
                 "the ase's Calculator class"
             )
         self.base_calc = base_calc
+        self.n_basis = n_basis
+        self.r_min = r_min
         self.r_max = r_max
         self.dr_threshold = dr_threshold
 
-        self.cv_fn = jax.jit(cv_fn)
+        self.cv_fn = None
         self.dim_reduction_factory = dim_reduction_factory
         self.energy_fn_factory = energy_fn_factory
 
@@ -73,8 +94,8 @@ class GKernelBias(Calculator):
         self.min_energy = np.inf
 
     def _initialize_nl(self, atoms):
-        self.neighbor_fn = build_energy_neighbor_fns(
-            atoms, self.r_max, self.dr_threshold
+        self.cv_fn, self.neighbor_fn = build_feature_neighbor_fns(
+            atoms, self.n_basis, self.r_min, self.r_max, self.dr_threshold
         )
 
     def save_descriptors(self, path):
@@ -93,8 +114,12 @@ class GKernelBias(Calculator):
         if self.neighbors.did_buffer_overflow:
             print("neighbor list overflowed, reallocating.")
             self.neighbors = self.neighbor_fn.allocate(position)
-
-        g_new = self.cv_fn(position, numbers, self.neighbors.idx)
+        offsets = jnp.zeros((self.neighbors.idx.shape[1], 3))
+        box = jnp.asarray(atoms.cell.array)
+        box = box.T
+        # inv_box = jnp.linalg.inv(box)
+        # positions = space.transform(inv_box, positions)
+        g_new = self.cv_fn(position, numbers, self.neighbors.idx, box, offsets)
         self.ref_cvs.append(g_new)
         self.ref_atomic_numbers.append(atoms.numbers)
 
@@ -116,9 +141,9 @@ class GKernelBias(Calculator):
         )
 
         @jax.jit
-        def body_fn(positions, neighbor, current_energy, min_energy):
+        def body_fn(positions, neighbor, box, offsets):
             neighbor = neighbor.update(positions)
-            energy, neg_forces = jax.value_and_grad(energy_fn)(positions, neighbor, current_energy, min_energy)
+            energy, neg_forces = jax.value_and_grad(energy_fn)(positions, neighbor, box, offsets)
             forces = -neg_forces
 
             return {"energy": energy, "forces": forces}, neighbor
@@ -159,8 +184,6 @@ class GKernelBias(Calculator):
         self.results = {
             "energy": self.base_results["energy"] + bias_results["energy"],
             "forces": self.base_results["forces"] + bias_results["forces"],
-            "energy_label": self.base_results["energy"],
-            "forces_label": self.base_results["forces"],
         }
         self._step_counter += 1
 
@@ -176,6 +199,7 @@ class GKernelBias(Calculator):
             numbers = jnp.array(atoms.numbers, dtype=jnp.int32)
 
             if not self.neighbor_fn:
+                # TODO use matscipy
                 self._initialize_nl(atoms)
 
             if not self.neighbors or self.neighbors.did_buffer_overflow:
@@ -190,10 +214,8 @@ class GKernelBias(Calculator):
         descriptors = data["g"]
         numbers = data["z"]
 
-
         descriptors = [entry for entry in descriptors]
         numbers = [entry for entry in numbers]
 
         self.ref_cvs.extend(descriptors)
         self.ref_atomic_numbers.extend(numbers)
-
