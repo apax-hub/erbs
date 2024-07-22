@@ -106,7 +106,6 @@ class ElementwiseLocalPCA:
             return fallback
 
         for k in cluster_range:
-            # print(k, X.shape[0])
             kmeans = KMeans(n_clusters = k, n_init="auto", init="k-means++").fit(X)
             labels = kmeans.labels_
             sil.append(silhouette_score(X, labels, metric = 'euclidean'))
@@ -126,26 +125,21 @@ class ElementwiseLocalPCA:
         g = np.reshape(g, (-1, g.shape[-1]))
         Z = np.reshape(Z, (-1,))
 
-        # n_elements = np.max(Z) + 1
-
         new_gs = []
         cluster_idxs = []
         mu = []
         sigmaT = []
         total_n_clusters = 0
-        # self.cluster_element_mapping = {}#{i: [] for i in range(119)}
         
 
         for element in elements:
             g_z = g[Z == element]
-            
+
             cluster_model = self.fit_clustering(element, g_z)
             self.cluster_models[element] = cluster_model
-            # self.cluster_element_mapping[element]
             labels = cluster_model.labels_
             n_clusters = cluster_model.n_clusters
             for cluster_idx in range(n_clusters):
-                # self.cluster_element_mapping[element].append
                 g_cluster = g_z[labels==cluster_idx]
                 idxs = labels[labels==cluster_idx] + total_n_clusters
                 n_samples = g_cluster.shape[0]
