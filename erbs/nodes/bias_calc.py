@@ -1,17 +1,17 @@
 import ase
-import numpy as np
 from erbs.bias.energy_function_factory import OPESExploreFactory
 from erbs.bias.potential import GKernelBias
 from erbs.dim_reduction.elementwise_pca import ElementwiseLocalPCA
 import zntrack
-from ipsuite import base
 from ase import units
+import ipsuite as ips
+from typing import Optional
 
-
-class ERBSCalculator(base.ProcessAtoms):
+class ERBSCalculator(ips.base.IPSNode):
     _module_ = "erbs.nodes"
 
     model = zntrack.deps()
+    data: Optional[list[ase.Atoms]] = zntrack.deps(None)
 
     n_basis: float = zntrack.params(4)
     r_min: float = zntrack.params(1.1)
@@ -40,13 +40,14 @@ class ERBSCalculator(base.ProcessAtoms):
             base_calc,
             zpca,
             energy_fn_factory,
+            n_basis = self.n_basis,
+            r_min =self.r_min,
             r_max=self.r_max,
             dr_threshold=self.nl_skin,
             interval=self.bias_interval,
         )
 
         if self.data:
-            atoms = self.get_data()
-            calc.add_configs(atoms)
+            calc.add_configs(self.data)
 
         return calc
