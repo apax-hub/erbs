@@ -82,7 +82,7 @@ class OPESExploreFactory:
         Zn = jnp.asarray(Zn)
         cluster_idxs = jnp.asarray(cluster_idxs)
 
-        def energy_fn(positions, neighbor, box, offsets):
+        def energy_fn(positions, Z, neighbor, box, offsets):
             g = cv_fn(positions, Z, neighbor.idx, box, offsets)
             g_reduced = vmap(dim_reduction_fn, 0, 0)(g, cluster_idxs)
             g_diff = g_reduced[g_nl[0]] - g_ref[g_nl[1]]

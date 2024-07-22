@@ -47,7 +47,7 @@ def build_feature_neighbor_fns(atoms, n_basis, r_min, r_max, dr_threshold):
 
 
 class GKernelBias(Calculator):
-    implemented_properties = ["energy", "forces"]
+    implemented_properties = ["energy", "forces", "stress"]
 
     def __init__(
         self,
@@ -81,8 +81,6 @@ class GKernelBias(Calculator):
         self.energy_and_force_fn = None
 
         self.ref_cvs = []
-        # self.reduced_ref_cvs = None
-        # ^ maybe introduce if we allow for reduction function update interval
         self.ref_atomic_numbers = []
         self.neighbors = None
         self.neighbor_fn = None
@@ -104,20 +102,33 @@ class GKernelBias(Calculator):
     def update_bias(self, atoms):
         position = jnp.array(atoms.positions, dtype=jnp.float32)
         numbers = jnp.array(atoms.numbers, dtype=jnp.int32)
+        
+        box = jnp.asarray(atoms.cell.array)
+
+        is_pbc = np.any(atoms.get_cell().lengths() > 1e-6)
+
+        if is_pbc:
+            box = box.T
+            inv_box = jnp.linalg.inv(box)
+            position = space.transform(inv_box, position)
 
         if self.neighbors is None:
-            self.neighbors = self.neighbor_fn.allocate(position)
+            if is_pbc:
+                self.neighbors = self.neighbor_fn.allocate(position, box=box)
+            else:
+                self.neighbors = self.neighbor_fn.allocate(position)
         else:
-            self.neighbors = self.neighbors.update(position)
+            if is_pbc:
+                self.neighbors = self.neighbors.update(position, box=box)
+            else:
+                self.neighbors = self.neighbors.update(position)
+
+        offsets = jnp.zeros((self.neighbors.idx.shape[1], 3))
 
         if self.neighbors.did_buffer_overflow:
             print("neighbor list overflowed, reallocating.")
             self.neighbors = self.neighbor_fn.allocate(position)
-        offsets = jnp.zeros((self.neighbors.idx.shape[1], 3))
-        box = jnp.asarray(atoms.cell.array)
-        box = box.T
-        # inv_box = jnp.linalg.inv(box)
-        # positions = space.transform(inv_box, positions)
+        
         g_new = self.cv_fn(position, numbers, self.neighbors.idx, box, offsets)
         self.ref_cvs.append(g_new)
         self.ref_atomic_numbers.append(atoms.numbers)
@@ -141,11 +152,20 @@ class GKernelBias(Calculator):
 
         @jax.jit
         def body_fn(positions, neighbor, box):
-            neighbor = neighbor.update(positions)
-            energy, neg_forces = jax.value_and_grad(energy_fn)(positions, neighbor, box)
-            forces = -neg_forces
+            if np.any(atoms.get_cell().lengths() > 1e-6):
+                box = box.T
+                inv_box = jnp.linalg.inv(box)
+                positions = space.transform(inv_box, positions)
+                neighbor = neighbor.update(positions, box=box)
+            else:
+                neighbor = neighbor.update(positions)
 
-            return {"energy": energy, "forces": forces}, neighbor
+            offsets = jnp.full([neighbor.idx.shape[1], 3], 0)
+
+            energy, neg_forces = jax.value_and_grad(energy_fn)(positions, numbers, neighbor, box, offsets)
+            forces = -neg_forces
+            results = {"energy": energy, "forces": forces}
+            return results, neighbor
 
         self.energy_and_force_fn = body_fn
 
@@ -171,7 +191,7 @@ class GKernelBias(Calculator):
 
         if self.neighbors.did_buffer_overflow:
             print("neighbor list overflowed, reallocating.")
-            self.neighbors = self.neighbor_fn.allocate(positions)
+            self.neighbors = self.neighbor_fn.allocate(positions, box=box)
             bias_results, self.neighbors = self.energy_and_force_fn(
                 positions, self.neighbors, box
             )
@@ -179,30 +199,51 @@ class GKernelBias(Calculator):
             k: np.array(v, dtype=np.float64) for k, v in bias_results.items()
         }
 
-        self.results["energy"] =  self.results["energy"] + bias_results["energy"],
-        self.results["forces"] =  self.results["forces"] + bias_results["forces"],
+        self.results["energy"] =  self.results["energy"] + bias_results["energy"]
+        self.results["forces"] =  self.results["forces"] + bias_results["forces"]
 
         self._step_counter += 1
 
     def add_configs(self, atoms_list):
         @jax.jit
-        def calc_g(positions, Z, neighbors):
+        def calc_g(positions, Z, neighbors, box, offsets):
             neighbors = neighbors.update(positions)
-            g = self.cv_fn(positions, Z, neighbors.idx)
+            g = self.cv_fn(positions, Z, neighbors.idx, box, offsets)
             return g
 
         for atoms in atoms_list:
-            positions = jnp.array(atoms.positions, dtype=jnp.float32)
+            position = jnp.array(atoms.positions, dtype=jnp.float32)
             numbers = jnp.array(atoms.numbers, dtype=jnp.int32)
 
+            box = jnp.asarray(atoms.cell.array)
+
+            is_pbc = np.any(atoms.get_cell().lengths() > 1e-6)
             if not self.neighbor_fn:
                 # TODO use matscipy
                 self._initialize_nl(atoms)
 
+            if is_pbc:
+                box = box.T
+                inv_box = jnp.linalg.inv(box)
+                position = space.transform(inv_box, position)
+
+            if self.neighbors is None:
+                if is_pbc:
+                    self.neighbors = self.neighbor_fn.allocate(position, box=box)
+                else:
+                    self.neighbors = self.neighbor_fn.allocate(position)
+            else:
+                if is_pbc:
+                    self.neighbors = self.neighbors.update(position, box=box)
+                else:
+                    self.neighbors = self.neighbors.update(position)
+
+            offsets = jnp.zeros((self.neighbors.idx.shape[1], 3))
+
             if not self.neighbors or self.neighbors.did_buffer_overflow:
-                self.neighbors = self.neighbor_fn.allocate(positions)
+                self.neighbors = self.neighbor_fn.allocate(position, box=box)
             Z = jnp.asarray(atoms.numbers)
-            g = calc_g(positions, Z, self.neighbors)
+            g = calc_g(position, Z, self.neighbors, box, offsets)
             self.ref_cvs.append(np.asarray(g))
             self.ref_atomic_numbers.append(np.asarray(numbers))
 
