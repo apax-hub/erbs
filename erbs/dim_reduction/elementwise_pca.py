@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
-from sklearn.cluster import KMeans
+from sklearn.cluster import MiniBatchKMeans
 
 
 class ElementwisePCA:
@@ -71,6 +71,34 @@ class KMeansFallback:
         return np.zeros(X.shape[0], dtype=np.int32)
 
 
+def flexible_pca(g_z, n_components, labels, cluster_idx, total_n_clusters):
+    print("running PCA")
+    g_cluster = g_z[labels==cluster_idx]
+    idxs = labels[labels==cluster_idx] + total_n_clusters
+    n_samples = g_cluster.shape[0]
+    if n_samples < n_components:
+        mean = np.mean(g_cluster, axis=0)
+        comps = np.random.normal(size=(g_cluster.shape[1], n_components))
+
+        g_pca = (g_cluster - mean) @ comps
+        mu = mean
+        sigmaT = comps
+    else:
+        pca = PCA(n_components=n_components)
+        # if n_samples > 100 and g_cluster.shape[1] > 10:
+        #     # Do a random projection before pca if dataset grows too large
+        #     q = 10
+        #     n_feats = g_cluster.shape[1]
+        #     P = np.random.normal(0, 1/np.sqrt(n_feats), (n_feats, q))
+        #     g_cluster = g_cluster @ P
+        g_pca = pca.fit_transform(g_cluster)
+        mu = pca.mean_
+        sigmaT = pca.components_.T
+
+    return g_pca, mu, sigmaT, idxs
+
+
+
 class ElementwiseLocalPCA:
     def __init__(self, n_components=2, kmax=10) -> None:
         self.n_components = n_components
@@ -106,9 +134,15 @@ class ElementwiseLocalPCA:
             return fallback
 
         for k in cluster_range:
-            kmeans = KMeans(n_clusters = k, n_init="auto", init="k-means++").fit(X)
+            ndata = X.shape[0]
+            kmeans = MiniBatchKMeans(n_clusters = k, n_init="auto", init="k-means++", max_iter=2).fit(X)
             labels = kmeans.labels_
-            sil.append(silhouette_score(X, labels, metric = 'euclidean'))
+            if ndata > 2000:
+                sample_size = 2000
+            else:
+                sample_size = None
+            score = silhouette_score(X, labels, metric = 'euclidean', sample_size=sample_size)
+            sil.append(score)
             kmean_models.append(kmeans)
 
         best_model_idx = np.argmax(sil)
@@ -127,11 +161,10 @@ class ElementwiseLocalPCA:
 
         new_gs = []
         cluster_idxs = []
-        mu = []
-        sigmaT = []
+        mus = []
+        sigmaTs = []
         total_n_clusters = 0
         
-
         for element in elements:
             g_z = g[Z == element]
 
@@ -140,27 +173,17 @@ class ElementwiseLocalPCA:
             labels = cluster_model.labels_
             n_clusters = cluster_model.n_clusters
             for cluster_idx in range(n_clusters):
-                g_cluster = g_z[labels==cluster_idx]
-                idxs = labels[labels==cluster_idx] + total_n_clusters
-                n_samples = g_cluster.shape[0]
-                if n_samples < self.n_components:
-                    mean = np.mean(g_cluster, axis=0)
-                    comps = np.random.normal(size=(g_cluster.shape[1], self.n_components))
+                g_pca, mu, sigmaT, idxs = flexible_pca(
+                    g_z,
+                    self.n_components,
+                    labels,
+                    cluster_idx,
+                    total_n_clusters
+                )
 
-                    g_pca = (g_cluster - mean) @ comps
-
-                    mu.append(mean)
-                    sigmaT.append(comps)
-                    new_gs.append(g_pca)
-                else:
-                    pca = PCA(n_components=self.n_components)
-                    g_pca = pca.fit_transform(g_cluster)
-
-
-                    mu.append(pca.mean_)
-                    sigmaT.append(pca.components_.T)
-                    new_gs.append(g_pca)
-
+                mus.append(mu)
+                sigmaTs.append(sigmaT)
+                new_gs.append(g_pca)
                 cluster_idxs.append(idxs)
 
             self.cluster_offset_per_element[element] = total_n_clusters
@@ -168,8 +191,7 @@ class ElementwiseLocalPCA:
 
         new_gs = np.concatenate(new_gs, axis=0)
         cluster_idxs = np.concatenate(cluster_idxs, axis=0)
-        self.mu, self.sigmaT = jnp.array(mu), jnp.array(sigmaT)
-        # print("TOTAL CLUSTER", total_n_clusters)
+        self.mu, self.sigmaT = jnp.array(mus), jnp.array(sigmaTs)
         return new_gs, cluster_idxs
     
     def apply_clustering(self, g, Z):
