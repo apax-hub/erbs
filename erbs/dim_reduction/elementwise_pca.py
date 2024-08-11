@@ -72,7 +72,6 @@ class KMeansFallback:
 
 
 def flexible_pca(g_z, n_components, labels, cluster_idx, total_n_clusters):
-    print("running PCA")
     g_cluster = g_z[labels==cluster_idx]
     idxs = labels[labels==cluster_idx] + total_n_clusters
     n_samples = g_cluster.shape[0]
@@ -115,7 +114,11 @@ class ElementwiseLocalPCA:
         current_num_clusters = self.clusters_per_element[element]
         if current_num_clusters is None:
             kmin=2
-            kmax = min(n_samples -1, self.kmax)
+            if n_samples <= 3:
+                lower = 3
+            else:
+                lower = n_samples-1
+            kmax = min(lower, self.kmax)
         else:
             kmin = max(2, current_num_clusters-1)
             kmax = min(n_samples -1, current_num_clusters+1)
@@ -144,7 +147,6 @@ class ElementwiseLocalPCA:
             score = silhouette_score(X, labels, metric = 'euclidean', sample_size=sample_size)
             sil.append(score)
             kmean_models.append(kmeans)
-
         best_model_idx = np.argmax(sil)
         best_model = kmean_models[best_model_idx]
         return best_model
