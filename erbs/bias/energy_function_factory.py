@@ -32,6 +32,29 @@ class MetaDFactory:
 
         return energy_fn
 
+
+def chunked_sum_of_kernels(X, k, a, chunk_size=50):
+
+    n_chunks = X.shape[0] // chunk_size
+    if X.shape[0] % chunk_size > 0:
+        n_chunks += 1
+
+    G_skk = 0
+    for i in range(n_chunks):
+        start_i = i * chunk_size
+        end_i = i * chunk_size + chunk_size
+        for j in range(n_chunks):
+            start_j = j * chunk_size
+            end_j = j * chunk_size + chunk_size
+
+            gdiff = X[None, start_i:end_i,:] - X[start_j:end_j, None, :]
+            s_kk = np.sum(gdiff, axis=2)**2
+            G_skk_chunk = k * np.exp(-s_kk / (a * 2.0))
+            G_skk += np.sum(G_skk_chunk)
+
+    return G_skk
+
+
 class OPESExploreFactory:
     def __init__(self, T=300, dE=1.2, a=0.3, atomic_limit=False, use_mc_norm=True) -> None:
         self.beta = 1 / (units.kB * T)
@@ -59,15 +82,11 @@ class OPESExploreFactory:
                 cluster_with_offset = cluster + total_n_clusters
                 g_filtered = g_ref[cluster_idxs==cluster_with_offset]
 
-                g_diff = g_filtered[None, :,:] - g_filtered[:, None, :]
-                s_kk = np.sum(g_diff, axis=2)**2
-                G_skk = self.k * np.exp(-s_kk / (self.a * 2.0))
-                G_skk = np.sum(G_skk)
-        
+                G_skk = chunked_sum_of_kernels(g_filtered, self.k, self.a)
+
                 mc_norm[cluster_with_offset] = G_skk / g_filtered.shape[0]
 
             total_n_clusters += current_n_clusters
-
         return mc_norm
 
     def create(self, cv_fn, dim_reduction_fn, cluster_models, Z, cluster_idxs, g_ref, cluster_idxs_ref, g_nl):
