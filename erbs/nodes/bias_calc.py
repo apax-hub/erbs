@@ -23,7 +23,7 @@ class ERBSCalculator(ips.base.IPSNode):
     band_width: float = zntrack.params(1.5)
     temperature = zntrack.params(300)
     bias_interval: int = zntrack.params(2000)
-    initial_clusters: int = zntrack.params(10)
+    initial_clusters: int = zntrack.params(5)
     nl_skin: float = zntrack.params(0.5)
 
     def run(self):
@@ -33,7 +33,7 @@ class ERBSCalculator(ips.base.IPSNode):
         zpca = ElementwiseLocalPCA(self.pca_components, self.initial_clusters)
 
         dE = units.kB*self.temperature * self.barrier_factor
-        energy_fn_factory = OPESExploreFactory(T=self.temperature, dE=dE, a=self.band_width)
+        energy_fn_factory = OPESExploreFactory(T=self.temperature, dE=dE, a=self.band_width, atomic_limit=True)
 
         base_calc = self.model.get_calculator()
         calc = GKernelBias(
