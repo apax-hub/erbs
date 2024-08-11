@@ -4,30 +4,35 @@ import jax.numpy as jnp
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 from apax.utils.jax_md_reduced import partition, space
-from apax.model.gmnn import FeatureModel
+from apax.nn.models import FeatureModel
 from apax.layers.descriptor.basis_functions import RadialFunction, GaussianBasis
 from apax.layers.descriptor import GaussianMomentDescriptor
+from apax.data.input_pipeline import CachedInMemoryDataset
+from tqdm import trange
 
 from erbs.cv.cv_nl import compute_cv_nl
 
 
-def build_feature_neighbor_fns(atoms, n_basis, r_min, r_max, dr_threshold):
+def build_feature_neighbor_fns(atoms, n_basis, r_min, r_max, dr_threshold, batched=False):
     box = np.asarray(atoms.get_cell().lengths(), dtype=jnp.float32)
 
-    if np.all(box < 1e-6):
-        displacement_fn, _ = space.free()
+    if batched:
+        displacement_fn = None
+        neighbor_fn = None
     else:
-        displacement_fn, _ = space.periodic_general(box, fractional_coordinates=True)
-
-    neighbor_fn = partition.neighbor_list(
-        displacement_fn,
-        box,
-        r_max,
-        dr_threshold,
-        fractional_coordinates=True,
-        disable_cell_list=True,
-        format=partition.Sparse,
-    )
+        if np.all(box < 1e-6):
+            displacement_fn, _ = space.free()
+        else:
+            displacement_fn, _ = space.periodic_general(box, fractional_coordinates=True)
+        neighbor_fn = partition.neighbor_list(
+            displacement_fn,
+            box,
+            r_max,
+            dr_threshold,
+            fractional_coordinates=True,
+            disable_cell_list=True,
+            format=partition.Sparse,
+        )
 
     # I could also just supply the descriptor and construct the (non) periodic feature model here
     descriptor = GaussianMomentDescriptor(
@@ -41,7 +46,7 @@ def build_feature_neighbor_fns(atoms, n_basis, r_min, r_max, dr_threshold):
             emb_init=None),
         n_contr=8
     )
-    feature_model = FeatureModel(descriptor, readout=None, init_box=box)
+    feature_model = FeatureModel(descriptor, readout=None, init_box=box, inference_disp_fn=displacement_fn)
     feature_fn = partial(feature_model.apply, {})
     return feature_fn, neighbor_fn
 
@@ -127,7 +132,10 @@ class GKernelBias(Calculator):
 
         if self.neighbors.did_buffer_overflow:
             print("neighbor list overflowed, reallocating.")
-            self.neighbors = self.neighbor_fn.allocate(position)
+            if is_pbc:
+                self.neighbors = self.neighbor_fn.allocate(position, box=box)
+            else:
+                self.neighbors = self.neighbor_fn.allocate(position)
         
         g_new = self.cv_fn(position, numbers, self.neighbors.idx, box, offsets)
         self.ref_cvs.append(g_new)
@@ -169,6 +177,7 @@ class GKernelBias(Calculator):
 
         self.energy_and_force_fn = body_fn
 
+
     def calculate(self, atoms=None, properties=["energy"], system_changes=all_changes):
         Calculator.calculate(self, atoms, properties, system_changes)
 
@@ -195,6 +204,7 @@ class GKernelBias(Calculator):
             bias_results, self.neighbors = self.energy_and_force_fn(
                 positions, self.neighbors, box
             )
+
         bias_results = {
             k: np.array(v, dtype=np.float64) for k, v in bias_results.items()
         }
@@ -205,47 +215,51 @@ class GKernelBias(Calculator):
         self._step_counter += 1
 
     def add_configs(self, atoms_list):
-        @jax.jit
-        def calc_g(positions, Z, neighbors, box, offsets):
-            neighbors = neighbors.update(positions)
-            g = self.cv_fn(positions, Z, neighbors.idx, box, offsets)
+        batch_size = 1
+    
+        dataset = CachedInMemoryDataset(
+            atoms_list,
+            self.r_max,
+            batch_size,
+            n_epochs=1,
+            ignore_labels=True,
+        )
+
+        n_data = dataset.n_data
+        ds = dataset.batch()
+
+        self.cv_fn, _ = build_feature_neighbor_fns(atoms_list[0], self.n_basis, self.r_min, self.r_max, dr_threshold=self.dr_threshold, batched=True)
+
+        def calc_descriptor(positions, Z, neighbors, box, offsets):
+            g = self.cv_fn(positions, Z, neighbors, box, offsets)
             return g
 
-        for atoms in atoms_list:
-            position = jnp.array(atoms.positions, dtype=jnp.float32)
-            numbers = jnp.array(atoms.numbers, dtype=jnp.int32)
+        calc_descriptor = jax.vmap(calc_descriptor, in_axes=(0, 0, 0, 0, 0))
+        calc_descriptor = jax.jit(calc_descriptor)
 
-            box = jnp.asarray(atoms.cell.array)
+        pbar = trange(
+            n_data, desc="Evaluating data", ncols=100, leave=False
+        )
+        for i, inputs in enumerate(ds):
+            g = calc_descriptor(
+                inputs["positions"],
+                inputs["numbers"],
+                inputs["idx"],
+                inputs["box"],
+                inputs["offsets"],
+            )
 
-            is_pbc = np.any(atoms.get_cell().lengths() > 1e-6)
-            if not self.neighbor_fn:
-                # TODO use matscipy
-                self._initialize_nl(atoms)
+            # for the last batch, the number of structures may be less
+            # than the batch_size,  which is why we check this explicitly
+            num_strucutres_in_batch = g.shape[0]
+            for j in range(num_strucutres_in_batch):
+                numbers = atoms_list[i + batch_size * j].numbers
+                n_atoms = numbers.shape[0]
+                self.ref_cvs.append(np.asarray(g[j])[:n_atoms,:])
+                self.ref_atomic_numbers.append(numbers)
+            pbar.update(batch_size)
+        pbar.close()
 
-            if is_pbc:
-                box = box.T
-                inv_box = jnp.linalg.inv(box)
-                position = space.transform(inv_box, position)
-
-            if self.neighbors is None:
-                if is_pbc:
-                    self.neighbors = self.neighbor_fn.allocate(position, box=box)
-                else:
-                    self.neighbors = self.neighbor_fn.allocate(position)
-            else:
-                if is_pbc:
-                    self.neighbors = self.neighbors.update(position, box=box)
-                else:
-                    self.neighbors = self.neighbors.update(position)
-
-            offsets = jnp.zeros((self.neighbors.idx.shape[1], 3))
-
-            if not self.neighbors or self.neighbors.did_buffer_overflow:
-                self.neighbors = self.neighbor_fn.allocate(position, box=box)
-            Z = jnp.asarray(atoms.numbers)
-            g = calc_g(position, Z, self.neighbors, box, offsets)
-            self.ref_cvs.append(np.asarray(g))
-            self.ref_atomic_numbers.append(np.asarray(numbers))
 
     def load_descriptors(self, path):
         data = np.load(path)
