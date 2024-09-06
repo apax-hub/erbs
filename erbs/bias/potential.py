@@ -209,6 +209,8 @@ class GKernelBias(Calculator):
             k: np.array(v, dtype=np.float64) for k, v in bias_results.items()
         }
 
+        bias_results["forces"] = bias_results["forces"] - np.sum(bias_results["forces"], axis=0)
+
         self.results["energy"] =  self.results["energy"] + bias_results["energy"]
         self.results["forces"] =  self.results["forces"] + bias_results["forces"]
 
@@ -259,6 +261,7 @@ class GKernelBias(Calculator):
                 self.ref_atomic_numbers.append(numbers)
             pbar.update(batch_size)
         pbar.close()
+        dataset.cleanup()
 
 
     def load_descriptors(self, path):
