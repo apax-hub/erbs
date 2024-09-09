@@ -5,12 +5,14 @@ import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 from apax.utils.jax_md_reduced import partition, space
 from apax.nn.models import FeatureModel
-from apax.layers.descriptor.basis_functions import RadialFunction, GaussianBasis
+from apax.layers.descriptor.basis_functions import RadialFunction, BesselBasis
 from apax.layers.descriptor import GaussianMomentDescriptor
 from apax.data.input_pipeline import CachedInMemoryDataset
 from tqdm import trange
 
+from erbs.bias.energy_function_factory import OPESExploreFactory
 from erbs.cv.cv_nl import compute_cv_nl
+from erbs.dim_reduction.elementwise_pca import DimReduction
 
 
 def build_feature_neighbor_fns(atoms, n_basis, r_min, r_max, dr_threshold, batched=False):
@@ -38,9 +40,8 @@ def build_feature_neighbor_fns(atoms, n_basis, r_min, r_max, dr_threshold, batch
     descriptor = GaussianMomentDescriptor(
         radial_fn=RadialFunction(
             n_basis,
-            basis_fn=GaussianBasis(
+            basis_fn=BesselBasis(
                 n_basis=n_basis,
-                r_min=r_min,
                 r_max=r_max,
             ),
             emb_init=None),
@@ -56,9 +57,9 @@ class GKernelBias(Calculator):
 
     def __init__(
         self,
-        base_calc,
-        dim_reduction_factory,
-        energy_fn_factory,
+        base_calc: Calculator,
+        dim_reduction_factory: DimReduction,
+        energy_fn_factory: OPESExploreFactory,
         n_basis = 4,
         r_min=1.1,
         r_max=6.0,

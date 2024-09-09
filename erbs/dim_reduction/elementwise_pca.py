@@ -5,7 +5,21 @@ from sklearn.metrics import silhouette_score
 from sklearn.cluster import MiniBatchKMeans
 
 
-class ElementwisePCA:
+class DimReduction:
+    def __init__(self, n_components=2):
+        self.n_components = n_components
+    
+    def fit_transform(self, g, Z):
+        ...
+
+    def apply_clustering(self, g, Z):
+        ...
+
+    def create_dim_reduction_fn(self):
+        ...
+
+
+class ElementwisePCA(DimReduction):
     def __init__(self, n_components=2) -> None:
         self.n_components = n_components
 
@@ -98,7 +112,7 @@ def flexible_pca(g_z, n_components, labels, cluster_idx, total_n_clusters):
 
 
 
-class ElementwiseLocalPCA:
+class ElementwiseLocalPCA(DimReduction):
     def __init__(self, n_components=2, kmax=10) -> None:
         self.n_components = n_components
         self.kmax = kmax

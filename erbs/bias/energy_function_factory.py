@@ -56,7 +56,7 @@ def chunked_sum_of_kernels(X, k, a, chunk_size=50):
 
 
 class OPESExploreFactory:
-    def __init__(self, T=300, dE=1.2, a=0.3, atomic_limit=False, use_mc_norm=True) -> None:
+    def __init__(self, T=300, dE=1.2, a=0.3, use_mc_norm=True) -> None:
         self.beta = 1 / (units.kB * T)
         self.std = a
         self.a = None
@@ -65,7 +65,6 @@ class OPESExploreFactory:
             raise ValueError("dE needs to be larger than 1.0!")
         self.dE = dE
         self.gamma = self.dE * self.beta
-        self.atomic_limit = atomic_limit
         self.use_mc_norm = use_mc_norm
 
 
@@ -114,14 +113,10 @@ class OPESExploreFactory:
                 prob_i = segment_mean(kde_ij, g_nl[0], num_segments=n_atoms)
 
             prefactor = (self.gamma - 1.0) / self.beta
-            if self.atomic_limit:
-                eps = jnp.exp(-(self.dE / prefactor )/(n_atoms))
-                bias_i = prefactor * jnp.log(prob_i + eps)
-                total_bias = jnp.sum(bias_i) + self.dE
-            else:
-                eps = jnp.exp(-(self.dE / prefactor ))
-                prob = jnp.prod(prob_i)
-                total_bias = prefactor * jnp.log(prob + eps) + self.dE
+
+            eps = jnp.exp(-(self.dE / prefactor )/(n_atoms))
+            bias_i = prefactor * jnp.log(prob_i + eps)
+            total_bias = jnp.sum(bias_i) + self.dE
 
             return total_bias
 

@@ -33,7 +33,7 @@ class ERBSCalculator(ips.base.IPSNode):
         zpca = ElementwiseLocalPCA(self.pca_components, self.initial_clusters)
 
         dE = units.kB*self.temperature * self.barrier_factor
-        energy_fn_factory = OPESExploreFactory(T=self.temperature, dE=dE, a=self.band_width, atomic_limit=True)
+        energy_fn_factory = OPESExploreFactory(T=self.temperature, dE=dE, a=self.band_width)
 
         base_calc = self.model.get_calculator()
         calc = GKernelBias(
