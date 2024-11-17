@@ -1,6 +1,7 @@
 import ase
+import numpy as np
 from erbs.bias.energy_function_factory import OPESExploreFactory
-from erbs.bias.potential import GKernelBias
+from erbs.bias.potential import ERBS
 from erbs.dim_reduction.elementwise_pca import ElementwiseLocalPCA
 import zntrack
 from ase import units
@@ -25,6 +26,7 @@ class ERBSCalculator(ips.base.IPSNode):
     bias_interval: int = zntrack.params(2000)
     initial_clusters: int = zntrack.params(5)
     nl_skin: float = zntrack.params(0.5)
+    update_iterations: int = zntrack.params(np.inf)
 
     def run(self):
         pass
@@ -36,7 +38,7 @@ class ERBSCalculator(ips.base.IPSNode):
         energy_fn_factory = OPESExploreFactory(T=self.temperature, dE=dE, a=self.band_width)
 
         base_calc = self.model.get_calculator()
-        calc = GKernelBias(
+        calc = ERBS(
             base_calc,
             zpca,
             energy_fn_factory,

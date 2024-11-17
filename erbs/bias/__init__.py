@@ -1,9 +1,9 @@
 from erbs.bias.energy_function_factory import (OPESExploreFactory,
                                                MetaDFactory)
-from erbs.bias.potential import GKernelBias
+from erbs.bias.potential import ERBS
 
 __all__ = [
-    "GKernelBias",
+    "ERBS",
     "OPESExploreFactory",
     "MetaDFactory",
 ]
