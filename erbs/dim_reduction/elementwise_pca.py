@@ -19,6 +19,48 @@ class DimReduction:
         ...
 
 
+
+def global_flexible_pca(g, n_components):
+    n_samples = g.shape[0]
+    if n_samples < n_components:
+        mean = np.mean(g, axis=0)
+        comps = np.random.normal(size=(g.shape[1], n_components))
+
+        g_pca = (g - mean) @ comps
+        mu = mean
+        sigmaT = comps
+    else:
+        pca = PCA(n_components=n_components)
+        g_pca = pca.fit_transform(g)
+        mu = pca.mean_
+        sigmaT = pca.components_.T
+
+    return g_pca, mu, sigmaT
+
+
+class GlobalPCA(DimReduction):
+    def __init__(self, n_components=2) -> None:
+        self.n_components = n_components
+
+        self.mu = None
+        self.sigmaT = None
+
+    def fit_transform(self, g):
+        g_pca, mu, sigmaT = global_flexible_pca(g, self.n_components)
+
+        self.mu = mu
+        self.sigmaT = sigmaT
+
+        return g_pca
+    
+    def create_dim_reduction_fn(self):
+        def dim_reduction_fn(g_i):
+            g_reduced_i = (g_i - self.mu) @ self.sigmaT
+            return g_reduced_i
+
+        return dim_reduction_fn
+
+
 class ElementwisePCA(DimReduction):
     def __init__(self, n_components=2) -> None:
         self.n_components = n_components

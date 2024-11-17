@@ -25,14 +25,16 @@ def build_feature_neighbor_fns(atoms, n_basis, r_min, r_max, dr_threshold, batch
     else:
         if np.all(box < 1e-6):
             displacement_fn, _ = space.free()
+            frac_coords = False
         else:
             displacement_fn, _ = space.periodic_general(box, fractional_coordinates=True)
+            frac_coords = True
         neighbor_fn = partition.neighbor_list(
             displacement_fn,
             box,
             r_max,
             dr_threshold,
-            fractional_coordinates=True,
+            fractional_coordinates=frac_coords,
             disable_cell_list=True,
             format=partition.Sparse,
         )
@@ -48,7 +50,7 @@ def build_feature_neighbor_fns(atoms, n_basis, r_min, r_max, dr_threshold, batch
             emb_init=None),
         n_contr=8
     )
-    feature_model = FeatureModel(descriptor, readout=None, init_box=box, inference_disp_fn=displacement_fn)
+    feature_model = FeatureModel(descriptor, readout=None, should_average=True, init_box=box, inference_disp_fn=displacement_fn)
     feature_fn = partial(feature_model.apply, {})
     return feature_fn, neighbor_fn
 
@@ -91,13 +93,15 @@ class ERBS(Calculator):
         self.body_fn = None
 
         self.ref_cvs = []
-        self.ref_atomic_numbers = []
+        self.bias_state = None
         self.neighbors = None
         self.neighbor_fn = None
 
         self.interval = interval
         self._step_counter = 0
         self.accumulate = True
+
+        self.bias_results = None
 
 
     def _initialize_nl(self, atoms):
@@ -107,15 +111,13 @@ class ERBS(Calculator):
         self.cv_fn = jax.jit(self.cv_fn)
 
     def save_descriptors(self, path):
-        np.savez(path, g=self.ref_cvs, z=self.ref_atomic_numbers)
+        np.savez(path, g=np.array(self.ref_cvs))
 
     def update_with_new_dimred(self, g_new, numbers):
 
-        reduced_ref_cvs, sorted_ref_numbers = self.dim_reduction_factory.fit_transform(
-            self.ref_cvs, self.ref_atomic_numbers
+        reduced_ref_cvs = self.dim_reduction_factory.fit_transform(
+            np.array(self.ref_cvs)
         )
-        current_cluster_idxs = self.dim_reduction_factory.apply_clustering(g_new, numbers)
-        g_neighbors = compute_cv_nl(current_cluster_idxs, sorted_ref_numbers)
 
         # create energy fn with new dim_reduction_fn
         self.energy_fn = self.energy_fn_factory.create(
@@ -127,14 +129,13 @@ class ERBS(Calculator):
 
         self.bias_state = BiasState(
             std=self.energy_fn_factory.std,
-            cluster_idxs = current_cluster_idxs,
-            reference_reduced_cvs = reduced_ref_cvs,
-            reference_atomic_numbers = sorted_ref_numbers,
-            feature_nl = g_neighbors,
+            g = reduced_ref_cvs,
             compression_threshold=threshold,
         )
         self.bias_state = self.bias_state.initialize()
-        self.bias_state = self.bias_state.compress()
+
+        # if len(reduced_ref_cvs) > 2:
+        #     self.bias_state = self.bias_state.compress()
 
     def update_with_fixed_dimred(self, g_new, numbers):
         if self.bias_state is None:
@@ -154,7 +155,7 @@ class ERBS(Calculator):
                 self.neighbors = self.neighbors.update(position)
 
     def update_bias(self, atoms):
-        position = jnp.array(atoms.positions, dtype=jnp.float32)
+        position = jnp.array(atoms.positions, dtype=jnp.float64)
         numbers = jnp.array(atoms.numbers, dtype=jnp.int32)
         
         box = jnp.asarray(atoms.cell.array)
@@ -179,7 +180,6 @@ class ERBS(Calculator):
         offsets = jnp.zeros((self.neighbors.idx.shape[1], 3))
         g_new = self.cv_fn(position, numbers, self.neighbors.idx, box, offsets)
         self.ref_cvs.append(g_new)
-        self.ref_atomic_numbers.append(atoms.numbers)
 
         should_reinit = self._step_counter < self.update_iterations
         if self.bias_state is None or should_reinit:
@@ -236,14 +236,12 @@ class ERBS(Calculator):
                 positions, self.neighbors, box, self.bias_state
             )
 
-        bias_results = {
+        self.bias_results = {
             k: np.array(v, dtype=np.float64) for k, v in bias_results.items()
         }
 
-        bias_results["forces"] = bias_results["forces"] - np.sum(bias_results["forces"], axis=0)
-
-        self.results["energy"] =  self.results["energy"] + bias_results["energy"]
-        self.results["forces"] =  self.results["forces"] + bias_results["forces"]
+        self.results["energy"] =  self.results["energy"] + self.bias_results["energy"]
+        self.results["forces"] =  self.results["forces"] + self.bias_results["forces"]
 
         self._step_counter += 1
 
