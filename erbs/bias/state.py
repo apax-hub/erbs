@@ -29,7 +29,7 @@ class BiasState:
         # TODO use determinant here somewhere 
         # k0 = self.std ** (cv_dim * 2)
         k0 = 1 / (np.sqrt(2.0 * np.pi * self.std**2) **cv_dim )
-        height = jnp.full(self.g.shape[0], k0)
+        height = jnp.full((self.g.shape[0], 1), k0)
 
         cov = jnp.full(self.g.shape, self.std)
 
@@ -64,26 +64,32 @@ class BiasState:
     
     def add_configuration(self, gnew):
 
-
         cv_dim = self.g.shape[-1]
-        covnew = self.std ** (cv_dim * 2) # move to bias state
+        covnew = np.full((cv_dim), self.std) # move to bias state
         hnew = 1 / (np.sqrt(2.0 * np.pi * self.std**2) **cv_dim )
+        hnew = np.array([hnew])
 
         g, cov, height = incremental_compress(
-            self.g, self.cov, self.height,
-            gnew, covnew, hnew, thresh=self.compression_threshold
+            np.array(self.g), np.array(self.cov), np.array(self.height),
+            np.array(gnew), covnew, hnew, thresh=self.compression_threshold
         )
 
         # for Zn: when compressing kernels, just compute the uncompressed contribution
         # to the normalisation
 
         # Zn = incremental_mc_normalisation()
-        Zn = mc_normalisation(
-            self.g,
+        Zn = global_mc_normalisation(
+            g,
             height,
             cov,
         )
 
+        new_state = self.replace(
+            g=jnp.array(g),
+            cov=jnp.array(cov),
+            height=jnp.array(height),
+            normalisation=Zn
+        )
 
-        return self.replace(g=g, cov=cov, height=height, normalisation=Zn)
+        return new_state
     

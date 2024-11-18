@@ -4,12 +4,8 @@ import jax.numpy as jnp
 import numpy as np
 from ase import units
 from jax import Array, vmap
-from erbs.cv.cv_nl import compute_cv_nl
-from erbs.ops import segment_mean
-import jax
-from flax.struct import dataclass
 
-from erbs.bias.kernel import gaussian
+from erbs.bias.kernel import diag_gaussian, gaussian
 
 
 class MetaDFactory:
@@ -54,32 +50,19 @@ class OPESExploreFactory:
             n_atoms = Z.shape[0]
 
             g_ref = bias_state.g
-            # cluster_idxs = bias_state["cluster_idxs"]
-            # g_nl = bias_state["feature_nl"]
             norm = bias_state.normalisation
             cov = bias_state.cov
             height = bias_state.height
 
             cv_dim = g_ref.shape[-1]
-            # a = self.std ** (cv_dim * 2) # move to bias state
-            # k = 1 / (np.sqrt(2.0 * np.pi * self.std**2) **cv_dim ) # move to bias state
 
             g = cv_fn(positions, Z, neighbor.idx, box, offsets)
-            # g_reduced = vmap(dim_reduction_fn, 0, 0)(g)
             g_reduced = dim_reduction_fn(g)
-            # n_ref = g_reduced.shape[0]
-            # g_diff = g_reduced[g_nl[0]] - g_ref[g_nl[1]]
             g_diff = g_reduced - g_ref
-            # print(g_reduced.shape)
-            # print(g_ref.shape)
-            # print(g_diff.shape)
-            # print(height.shape)
-            # print(cov.shape)
-            # quit()
+
             g_diff = jnp.reshape(g_diff, (-1, cv_dim))
             kde_ij = vmap(gaussian, (0, 0, 0), 0)(g_diff, height, cov)
 
-            # unnormalized_prob_i = jax.ops.segment_sum(kde_ij, g_nl[0], num_segments=n_atoms)
             unnormalized_prob_i = jnp.sum(kde_ij)
             prob_i = unnormalized_prob_i / norm
 

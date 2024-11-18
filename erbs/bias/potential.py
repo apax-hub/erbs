@@ -87,6 +87,7 @@ class ERBS(Calculator):
 
         self.cv_fn = None
         self.dim_reduction_factory = dim_reduction_factory
+        self.dim_red_fn = None
         self.energy_fn_factory = energy_fn_factory
 
         self.energy_fn = None
@@ -118,11 +119,13 @@ class ERBS(Calculator):
         reduced_ref_cvs = self.dim_reduction_factory.fit_transform(
             np.array(self.ref_cvs)
         )
+        self.dim_red_fn = self.dim_reduction_factory.create_dim_reduction_fn()
+        self.dim_red_fn = jax.jit(self.dim_red_fn)
 
         # create energy fn with new dim_reduction_fn
         self.energy_fn = self.energy_fn_factory.create(
             self.cv_fn,
-            self.dim_reduction_factory.create_dim_reduction_fn(),
+            self.dim_red_fn,
         )
 
         threshold = self.energy_fn_factory.compression_threshold
@@ -134,13 +137,13 @@ class ERBS(Calculator):
         )
         self.bias_state = self.bias_state.initialize()
 
-        # if len(reduced_ref_cvs) > 2:
-        #     self.bias_state = self.bias_state.compress()
+        if len(reduced_ref_cvs) > 2:
+            self.bias_state = self.bias_state.compress()
 
     def update_with_fixed_dimred(self, g_new, numbers):
         if self.bias_state is None:
             raise ValueError("Bias state has not yet been initialized")
-        self.bias_state.add_configuration(g_new, numbers)
+        self.bias_state.add_configuration(g_new)
 
     def update_neighbors(self, position, box, is_pbc):
         if self.neighbors is None:
@@ -185,8 +188,8 @@ class ERBS(Calculator):
         if self.bias_state is None or should_reinit:
             self.update_with_new_dimred(g_new, atoms.numbers)
         else:
-            self.update_with_fixed_dimred(g_new, atoms.numbers)
-
+            g_new_red = self.dim_red_fn(g_new)
+            self.update_with_fixed_dimred(g_new_red, atoms.numbers)
 
         @jax.jit
         def body_fn(positions, neighbor, box, bias_state):

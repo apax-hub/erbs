@@ -6,6 +6,12 @@ def gaussian(g_diff, k, a):
     U = k * jnp.exp(-x / (a * 2.0))
     return U
 
+def diag_gaussian(gdiff, k, cov):
+    x = jnp.dot(gdiff.T, gdiff / cov)
+    U = k * jnp.exp(-x/2)
+    return U
+
+
 def chunked_sum_of_kernels(X, k, cov, chunk_size=50):
     # TODO use diagonal gaussian
 
@@ -20,11 +26,12 @@ def chunked_sum_of_kernels(X, k, cov, chunk_size=50):
         for j in range(n_chunks):
             start_j = j * chunk_size
             end_j = j * chunk_size + chunk_size
-
             gdiff = X[None, start_i:end_i,:] - X[start_j:end_j, None, :]
-            cov_chunk = cov[start_i:end_i,:]
-            s_kk = np.sum(gdiff, axis=2)**2
-            G_skk_chunk = k * np.exp(-s_kk / (np.prod(cov_chunk, axis=1) * 2.0)) # TODO
+            cov_chunk = cov[start_i:end_i,None, :]
+            k_chunk = k[start_i:end_i,:]
+
+            x = np.einsum("bcj, bcj -> bc" , gdiff, gdiff / cov_chunk)
+            G_skk_chunk = k_chunk * np.exp(- x / 2.0)
             G_skk += np.sum(G_skk_chunk)
 
     return G_skk
@@ -126,7 +133,7 @@ def compress(g, cov, h, thresh=0.8):
     return gc, covc, hc
 
 
-def incremental_compress(gc, covc, hc, gnew, varnew, hnew, thresh=0.8):
+def incremental_compress(gc, covc, hc, gnew, covnew, hnew, thresh=0.8):
     dists = mahalanobis(gc,covc, gnew)
 
     dmin = np.min(dists)
@@ -146,6 +153,6 @@ def incremental_compress(gc, covc, hc, gnew, varnew, hnew, thresh=0.8):
     else:
         gc = np.append(gc, gnew[None,:], axis=0)
         hc = np.append(hc, hnew[None,:], axis=0)
-        covc = np.append(covc, varnew[None,:], axis=0)
+        covc = np.append(covc, covnew[None,:], axis=0)
     
     return gc, covc, hc
