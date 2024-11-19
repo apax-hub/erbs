@@ -1,11 +1,8 @@
-import dataclasses
-from typing import Optional
 import jax.numpy as jnp
-import numpy as np
 from ase import units
-from jax import Array, vmap
+from jax import vmap
 
-from erbs.bias.kernel import diag_gaussian, gaussian
+from erbs.bias.kernel import gaussian
 
 
 class MetaDFactory:
@@ -47,7 +44,6 @@ class OPESExploreFactory:
     def create(self, cv_fn, dim_reduction_fn):
 
         def energy_fn(positions, Z, neighbor, box, offsets, bias_state):
-            n_atoms = Z.shape[0]
 
             g_ref = bias_state.g
             norm = bias_state.normalisation

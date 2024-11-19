@@ -16,7 +16,6 @@ from tqdm import trange
 
 from erbs.bias.energy_function_factory import OPESExploreFactory
 from erbs.bias.state import BiasState
-from erbs.cv.cv_nl import compute_cv_nl
 from erbs.dim_reduction.elementwise_pca import DimReduction
 
 

@@ -2,9 +2,7 @@ import dataclasses
 from typing import Optional
 import jax.numpy as jnp
 import numpy as np
-from erbs.bias.kernel import compress, global_mc_normalisation, incremental_compress, mc_normalisation
-from erbs.cv.cv_nl import compute_cv_nl
-import jax
+from erbs.bias.kernel import compress, global_mc_normalisation, incremental_compress
 from flax.struct import dataclass
 
 from jax import Array
