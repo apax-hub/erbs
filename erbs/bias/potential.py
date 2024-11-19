@@ -1,9 +1,13 @@
 from functools import partial
+from typing import Optional, Union
 import jax
 import jax.numpy as jnp
+from matplotlib.path import Path
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 from apax.utils.jax_md_reduced import partition, space
+from apax.train.checkpoints import restore_parameters
+from apax.config.train_config import Config
 from apax.nn.models import FeatureModel
 from apax.layers.descriptor.basis_functions import RadialFunction, BesselBasis
 from apax.layers.descriptor import GaussianMomentDescriptor
@@ -16,7 +20,7 @@ from erbs.cv.cv_nl import compute_cv_nl
 from erbs.dim_reduction.elementwise_pca import DimReduction
 
 
-def build_feature_neighbor_fns(atoms, n_basis, r_min, r_max, dr_threshold, batched=False):
+def build_feature_neighbor_fns(atoms, n_basis, r_max, dr_threshold, config: Optional[Config]=None, params=None, batched=False):
     box = np.asarray(atoms.get_cell().lengths(), dtype=jnp.float32)
 
     if batched:
@@ -38,20 +42,28 @@ def build_feature_neighbor_fns(atoms, n_basis, r_min, r_max, dr_threshold, batch
             disable_cell_list=True,
             format=partition.Sparse,
         )
+    if config and params:
+        n_species = 119  # int(np.max(Z) + 1)
+        Builder = config.model.get_builder()
+        builder = Builder(config.model.get_dict(), n_species=n_species)
 
-    # I could also just supply the descriptor and construct the (non) periodic feature model here
-    descriptor = GaussianMomentDescriptor(
-        radial_fn=RadialFunction(
-            n_basis,
-            basis_fn=BesselBasis(
-                n_basis=n_basis,
-                r_max=r_max,
-            ),
-            emb_init=None),
-        n_contr=8
-    )
-    feature_model = FeatureModel(descriptor, readout=None, should_average=True, init_box=box, inference_disp_fn=displacement_fn)
-    feature_fn = partial(feature_model.apply, {})
+        feature_model = builder.build_ll_feature_model(
+            apply_mask=True, init_box=np.array(box), inference_disp_fn=displacement_fn
+        )
+        feature_fn = partial(feature_model.apply, params)
+    else:
+        descriptor = GaussianMomentDescriptor(
+            radial_fn=RadialFunction(
+                n_basis,
+                basis_fn=BesselBasis(
+                    n_basis=n_basis,
+                    r_max=r_max,
+                ),
+                emb_init=None),
+            n_contr=8
+        )
+        feature_model = FeatureModel(descriptor, readout=None, should_average=True, init_box=box, inference_disp_fn=displacement_fn)
+        feature_fn = partial(feature_model.apply, {})
     return feature_fn, neighbor_fn
 
 
@@ -63,8 +75,8 @@ class ERBS(Calculator):
         base_calc: Calculator,
         dim_reduction_factory: DimReduction,
         energy_fn_factory: OPESExploreFactory,
-        n_basis = 4,
-        r_min=1.1,
+        model_dir: Optional[Union[Path, list[Path]]] = None,
+        n_basis = 5,
         r_max=6.0,
         dr_threshold=0.5,
         interval=10_000,
@@ -80,7 +92,10 @@ class ERBS(Calculator):
             )
         self.base_calc = base_calc
         self.n_basis = n_basis
-        self.r_min = r_min
+        self.model_config = None
+        self.params = None
+        if model_dir:
+            self.model_config, self.params = restore_parameters(model_dir)
         self.r_max = r_max
         self.dr_threshold = dr_threshold
         self.update_iterations = update_iterations
@@ -93,6 +108,7 @@ class ERBS(Calculator):
         self.energy_fn = None
         self.body_fn = None
 
+        self.auxilliary_cvs = [] # used for dimensionality reduction
         self.ref_cvs = []
         self.bias_state = None
         self.neighbors = None
@@ -107,17 +123,23 @@ class ERBS(Calculator):
 
     def _initialize_nl(self, atoms):
         self.cv_fn, self.neighbor_fn = build_feature_neighbor_fns(
-            atoms, self.n_basis, self.r_min, self.r_max, self.dr_threshold
+            atoms, self.n_basis, self.r_max, self.dr_threshold
         )
         self.cv_fn = jax.jit(self.cv_fn)
 
     def save_descriptors(self, path):
-        np.savez(path, g=np.array(self.ref_cvs))
+        data = {
+            "g": np.array(self.ref_cvs)
+        }
+        if len(self.auxilliary_cvs) > 0:
+            data["g_aux"] = np.array(self.auxilliary_cvs)
+        np.savez(path, **data)
 
     def update_with_new_dimred(self, g_new, numbers):
+        self.ref_cvs.append(g_new)
 
         reduced_ref_cvs = self.dim_reduction_factory.fit_transform(
-            np.array(self.ref_cvs)
+            np.array(self.ref_cvs + self.auxilliary_cvs)
         )
         self.dim_red_fn = self.dim_reduction_factory.create_dim_reduction_fn()
         self.dim_red_fn = jax.jit(self.dim_red_fn)
@@ -141,9 +163,11 @@ class ERBS(Calculator):
             self.bias_state = self.bias_state.compress()
 
     def update_with_fixed_dimred(self, g_new, numbers):
+        self.ref_cvs.append(g_new)
+        g_new_red = self.dim_red_fn(g_new)
         if self.bias_state is None:
             raise ValueError("Bias state has not yet been initialized")
-        self.bias_state.add_configuration(g_new)
+        self.bias_state.add_configuration(g_new_red)
 
     def update_neighbors(self, position, box, is_pbc):
         if self.neighbors is None:
@@ -182,14 +206,13 @@ class ERBS(Calculator):
         
         offsets = jnp.zeros((self.neighbors.idx.shape[1], 3))
         g_new = self.cv_fn(position, numbers, self.neighbors.idx, box, offsets)
-        self.ref_cvs.append(g_new)
 
         should_reinit = self._step_counter < self.update_iterations
         if self.bias_state is None or should_reinit:
-            self.update_with_new_dimred(g_new, atoms.numbers)
+            self.update_with_new_dimred(g_new)
         else:
-            g_new_red = self.dim_red_fn(g_new)
-            self.update_with_fixed_dimred(g_new_red, atoms.numbers)
+            
+            self.update_with_fixed_dimred(g_new)
 
         @jax.jit
         def body_fn(positions, neighbor, box, bias_state):
@@ -248,7 +271,7 @@ class ERBS(Calculator):
 
         self._step_counter += 1
 
-    def add_configs(self, atoms_list):
+    def add_configs(self, atoms_list, for_dimred_only=True):
         batch_size = 1
     
         dataset = CachedInMemoryDataset(
@@ -287,10 +310,13 @@ class ERBS(Calculator):
             # than the batch_size,  which is why we check this explicitly
             num_strucutres_in_batch = g.shape[0]
             for j in range(num_strucutres_in_batch):
-                numbers = atoms_list[i + batch_size * j].numbers
-                n_atoms = numbers.shape[0]
-                self.ref_cvs.append(np.asarray(g[j])[:n_atoms,:])
-                self.ref_atomic_numbers.append(numbers)
+                g_cpu = np.asarray(g[j])
+
+                if for_dimred_only:
+                    self.auxilliary_cvs.append(g_cpu)
+                else:
+                    self.ref_cvs.append(g_cpu)
+
             pbar.update(batch_size)
         pbar.close()
         dataset.cleanup()
