@@ -1,8 +1,13 @@
 import os
 import warnings
 
+from erbs.utils import setup_ase
 import jax
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-warnings.filterwarnings(action="ignore", category=FutureWarning, module=r"jax.*scatter")
 jax.config.update("jax_enable_x64", True)
+
+setup_ase()
+
+warnings.filterwarnings(action="ignore", category=FutureWarning, module=r"jax.*scatter")
+

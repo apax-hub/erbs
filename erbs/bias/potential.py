@@ -267,6 +267,8 @@ class ERBS(Calculator):
 
         self.results["energy"] =  self.results["energy"] + self.bias_results["energy"]
         self.results["forces"] =  self.results["forces"] + self.bias_results["forces"]
+        self.results["energy_bias"] = self.bias_results["energy"]
+        self.results["forces_bias"] = self.bias_results["forces"]
 
         self._step_counter += 1
 
