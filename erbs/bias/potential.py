@@ -126,15 +126,8 @@ class ERBS(Calculator):
         )
         self.cv_fn = jax.jit(self.cv_fn)
 
-    def save_descriptors(self, path):
-        data = {
-            "g": np.array(self.ref_cvs)
-        }
-        if len(self.auxilliary_cvs) > 0:
-            data["g_aux"] = np.array(self.auxilliary_cvs)
-        np.savez(path, **data)
 
-    def update_with_new_dimred(self, g_new, numbers):
+    def update_with_new_dimred(self, g_new):
         self.ref_cvs.append(g_new)
 
         reduced_ref_cvs = self.dim_reduction_factory.fit_transform(
@@ -161,7 +154,7 @@ class ERBS(Calculator):
         if len(reduced_ref_cvs) > 2:
             self.bias_state = self.bias_state.compress()
 
-    def update_with_fixed_dimred(self, g_new, numbers):
+    def update_with_fixed_dimred(self, g_new):
         self.ref_cvs.append(g_new)
         g_new_red = self.dim_red_fn(g_new)
         if self.bias_state is None:
@@ -331,3 +324,12 @@ class ERBS(Calculator):
 
         self.ref_cvs.extend(descriptors)
         self.ref_atomic_numbers.extend(numbers)
+
+
+    def save_descriptors(self, path):
+        data = {
+            "g": np.array(self.ref_cvs)
+        }
+        if len(self.auxilliary_cvs) > 0:
+            data["g_aux"] = np.array(self.auxilliary_cvs)
+        np.savez(path, **data)
