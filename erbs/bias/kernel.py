@@ -12,7 +12,7 @@ def diag_gaussian(gdiff, k, cov):
     return U
 
 
-def chunked_sum_of_kernels(X, k, cov, chunk_size=50):
+def chunked_sum_of_kernels(X, k, cov, chunk_size=200):
     # TODO use diagonal gaussian
 
     n_chunks = X.shape[0] // chunk_size
@@ -29,6 +29,7 @@ def chunked_sum_of_kernels(X, k, cov, chunk_size=50):
             gdiff = X[None, start_i:end_i,:] - X[start_j:end_j, None, :]
             cov_chunk = cov[start_i:end_i,None, :]
             k_chunk = k[start_i:end_i,:]
+            # TODO CHECK CHUNKING FOR COV for chunksize = 1
 
             x = np.einsum("bcj, bcj -> bc" , gdiff, gdiff / cov_chunk)
             G_skk_chunk = k_chunk * np.exp(- x / 2.0)

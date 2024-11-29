@@ -6,27 +6,31 @@ from erbs.bias.kernel import gaussian
 
 
 class MetaDFactory:
-    def __init__(self, k=1.2, a=0.3) -> None:
+    def __init__(self, T=300, dE=1.2, a=0.3, compression_threshold=0.4) -> None:
         self.std = a
-        self.k = k
+        self.k = dE
+        self.compression_threshold = compression_threshold
 
-    def create(self, cv_fn, dim_reduction_fn, cluster_models, Z, cluster_idxs, g_ref, cluster_idxs_ref, g_nl):
-        Z = jnp.asarray(Z)
-        cv_dim = g_ref.shape[-1]
+    def create(self, cv_fn, dim_reduction_fn):
 
-        self.a = self.std ** (cv_dim * 2)
+        def energy_fn(positions, Z, neighbor, box, offsets, bias_state):
 
-        cluster_idxs = jnp.asarray(cluster_idxs)
+            g_ref = bias_state.g
+            norm = bias_state.normalisation
+            cov = bias_state.cov
+            height = bias_state.height
 
-        def energy_fn(positions, neighbor):
-            g = cv_fn(positions, Z, neighbor.idx)
-            g_reduced = vmap(dim_reduction_fn, 0, 0)(g, cluster_idxs)
-            g_diff = g_reduced[g_nl[0]] - g_ref[g_nl[1]]
-            kde_ij = vmap(gaussian, (0, None, None), 0)(g_diff, self.k, self.a)
+            cv_dim = g_ref.shape[-1]
+
+            g = cv_fn(positions, Z, neighbor.idx, box, offsets)
+            g_reduced = dim_reduction_fn(g)
+
+            g_diff = g_reduced - g_ref
+
+            kde_ij = vmap(gaussian, (0, None, None), 0)(g_diff, self.k, self.std)
 
             total_bias = jnp.sum(kde_ij)
             return total_bias
-
         return energy_fn
 
 
