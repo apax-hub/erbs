@@ -9,7 +9,7 @@ from apax.utils.jax_md_reduced import partition, space
 from apax.train.checkpoints import restore_parameters
 from apax.config.train_config import Config
 from apax.nn.models import FeatureModel
-from apax.layers.descriptor.basis_functions import RadialFunction, BesselBasis
+from apax.layers.descriptor.basis_functions import RadialFunction, BesselBasis, GaussianBasis
 from apax.layers.descriptor import GaussianMomentDescriptor
 from apax.data.input_pipeline import CachedInMemoryDataset
 from tqdm import trange
@@ -54,8 +54,9 @@ def build_feature_neighbor_fns(atoms, n_basis, r_max, dr_threshold, config: Opti
         descriptor = GaussianMomentDescriptor(
             radial_fn=RadialFunction(
                 n_basis,
-                basis_fn=BesselBasis(
+                basis_fn=GaussianBasis(
                     n_basis=n_basis,
+                    r_min=1.5,
                     r_max=r_max,
                 ),
                 emb_init=None),
@@ -272,8 +273,7 @@ class ERBS(Calculator):
 
         self._step_counter += 1
 
-    def add_configs(self, atoms_list, for_dimred_only=True):
-        batch_size = 1
+    def compute_cvs(self, atoms_list, batch_size=4):
     
         dataset = CachedInMemoryDataset(
             atoms_list,
@@ -295,6 +295,8 @@ class ERBS(Calculator):
         calc_descriptor = jax.vmap(calc_descriptor, in_axes=(0, 0, 0, 0, 0))
         calc_descriptor = jax.jit(calc_descriptor)
 
+        descriptors = []
+
         pbar = trange(
             n_data, desc="Evaluating data", ncols=100, leave=False
         )
@@ -307,20 +309,26 @@ class ERBS(Calculator):
                 inputs["offsets"],
             )
 
-            # for the last batch, the number of structures may be less
-            # than the batch_size,  which is why we check this explicitly
             num_strucutres_in_batch = g.shape[0]
             for j in range(num_strucutres_in_batch):
                 g_cpu = np.asarray(g[j])
-
-                if for_dimred_only:
-                    self.auxilliary_cvs.append(g_cpu)
-                else:
-                    self.ref_cvs.append(g_cpu)
+                descriptors.append(g_cpu)
+                
 
             pbar.update(batch_size)
         pbar.close()
         dataset.cleanup()
+
+        return descriptors
+
+    def add_configs(self, atoms_list, batch_size=4, for_dimred_only=True):
+
+        descriptors = self.compute_cvs(atoms_list, batch_size)
+
+        if for_dimred_only:
+            self.auxilliary_cvs.extend(descriptors)
+        else:
+            self.ref_cvs.extend(descriptors)
 
 
     def load_descriptors(self, path):
