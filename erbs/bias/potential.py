@@ -127,13 +127,6 @@ class ERBS(Calculator):
         )
         self.cv_fn = jax.jit(self.cv_fn)
 
-    def save_descriptors(self, path):
-        data = {
-            "g": np.array(self.ref_cvs)
-        }
-        if len(self.auxilliary_cvs) > 0:
-            data["g_aux"] = np.array(self.auxilliary_cvs)
-        np.savez(path, **data)
 
     def update_with_new_dimred(self, g_new):
         self.ref_cvs.append(g_new)
@@ -341,3 +334,12 @@ class ERBS(Calculator):
 
         self.ref_cvs.extend(descriptors)
         self.ref_atomic_numbers.extend(numbers)
+
+
+    def save_descriptors(self, path):
+        data = {
+            "g": np.array(self.ref_cvs)
+        }
+        if len(self.auxilliary_cvs) > 0:
+            data["g_aux"] = np.array(self.auxilliary_cvs)
+        np.savez(path, **data)
