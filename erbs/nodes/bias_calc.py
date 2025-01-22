@@ -2,7 +2,8 @@ import ase
 import numpy as np
 from erbs.bias.energy_function_factory import OPESExploreFactory
 from erbs.bias.potential import ERBS
-from erbs.dim_reduction.elementwise_pca import ElementwiseLocalPCA
+# from erbs.dim_reduction.elementwise_pca import ElementwiseLocalPCA
+from erbs.dim_reduction.elementwise_pca import GlobalPCA
 import zntrack
 from ase import units
 import ipsuite as ips
@@ -21,11 +22,12 @@ class ERBSCalculator(ips.base.IPSNode):
     n_contr: float = zntrack.params(8)
 
     pca_components: int = zntrack.params(5)
+    skip_first_n_components: Optional[int] = zntrack.params(None)
+
     barrier_factor = zntrack.params(3)
     band_width: float = zntrack.params(1.5)
     temperature = zntrack.params(300)
     bias_interval: int = zntrack.params(2000)
-    initial_clusters: int = zntrack.params(5)
     nl_skin: float = zntrack.params(0.5)
     update_iterations: int = zntrack.params(np.inf)
 
@@ -33,7 +35,8 @@ class ERBSCalculator(ips.base.IPSNode):
         pass
 
     def get_calculator(self, **kwargs):
-        zpca = ElementwiseLocalPCA(self.pca_components, self.initial_clusters)
+        # zpca = ElementwiseLocalPCA(self.pca_components, self.initial_clusters)
+        pca = GlobalPCA(self.pca_components, skip_first_n_components=self.skip_first_n_components)
 
         dE = units.kB*self.temperature * self.barrier_factor
         energy_fn_factory = OPESExploreFactory(T=self.temperature, dE=dE, a=self.band_width)
@@ -41,7 +44,7 @@ class ERBSCalculator(ips.base.IPSNode):
         base_calc = self.model.get_calculator()
         calc = ERBS(
             base_calc,
-            zpca,
+            pca,
             energy_fn_factory,
             n_basis = self.n_basis,
             r_min =self.r_min,
