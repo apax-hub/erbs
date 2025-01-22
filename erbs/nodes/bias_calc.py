@@ -13,13 +13,14 @@ class ERBSCalculator(ips.base.IPSNode):
 
     model = zntrack.deps()
     data: Optional[list[ase.Atoms]] = zntrack.deps(None)
+    data_for_dimred_only: bool = zntrack.params(True)
 
     n_basis: float = zntrack.params(4)
     r_min: float = zntrack.params(1.1)
     r_max = zntrack.params(6.0)
     n_contr: float = zntrack.params(8)
 
-    pca_components: int = zntrack.params(2)
+    pca_components: int = zntrack.params(5)
     barrier_factor = zntrack.params(3)
     band_width: float = zntrack.params(1.5)
     temperature = zntrack.params(300)
@@ -50,6 +51,6 @@ class ERBSCalculator(ips.base.IPSNode):
         )
 
         if self.data:
-            calc.add_configs(self.data)
+            calc.add_configs(self.data, for_dimred_only=self.data_for_dimred_only)
 
         return calc
