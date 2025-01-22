@@ -39,8 +39,9 @@ def global_flexible_pca(g, n_components):
 
 
 class GlobalPCA(DimReduction):
-    def __init__(self, n_components=2) -> None:
+    def __init__(self, n_components=2, skip_first_n_components=None) -> None:
         self.n_components = n_components
+        self.skip_first_n_components = skip_first_n_components
 
         self.mu = None
         self.sigmaT = None
@@ -51,11 +52,17 @@ class GlobalPCA(DimReduction):
         self.mu = mu
         self.sigmaT = sigmaT
 
+        if self.skip_first_n_components is not None:
+            g_pca = g_pca[:,self.skip_first_n_components:]
+
         return g_pca
     
     def create_dim_reduction_fn(self):
         def dim_reduction_fn(g_i):
             g_reduced_i = (g_i - self.mu) @ self.sigmaT
+
+            if self.skip_first_n_components is not None:
+                g_reduced_i = g_reduced_i[:,self.skip_first_n_components:]
             return g_reduced_i
 
         return dim_reduction_fn

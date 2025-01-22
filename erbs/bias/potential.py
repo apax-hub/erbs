@@ -85,11 +85,11 @@ class ERBS(Calculator):
     ):
         Calculator.__init__(self, **kwargs)
 
-        if not isinstance(base_calc, Calculator):
-            raise ValueError(
-                "All the calculators should be inherited from"
-                "the ase's Calculator class"
-            )
+        # if not isinstance(base_calc, Calculator):
+        #     raise ValueError(
+        #         "All the calculators should be inherited from"
+        #         "the ase's Calculator class"
+        #     )
         self.base_calc = base_calc
         self.n_basis = n_basis
         self.model_config = None
@@ -279,7 +279,7 @@ class ERBS(Calculator):
         n_data = dataset.n_data
         ds = dataset.batch()
 
-        self.cv_fn, _ = build_feature_neighbor_fns(atoms_list[0], self.n_basis, self.r_min, self.r_max, dr_threshold=self.dr_threshold, batched=True)
+        self.cv_fn, _ = build_feature_neighbor_fns(atoms_list[0], self.n_basis, self.r_max, dr_threshold=self.dr_threshold, batched=True)
 
         def calc_descriptor(positions, Z, neighbors, box, offsets):
             g = self.cv_fn(positions, Z, neighbors, box, offsets)
@@ -324,16 +324,15 @@ class ERBS(Calculator):
             self.ref_cvs.extend(descriptors)
 
 
-    def load_descriptors(self, path):
+    def add_descriptors(self, path, for_dimred_only=True):
         data = np.load(path)
         descriptors = data["g"]
-        numbers = data["z"]
 
         descriptors = [entry for entry in descriptors]
-        numbers = [entry for entry in numbers]
-
-        self.ref_cvs.extend(descriptors)
-        self.ref_atomic_numbers.extend(numbers)
+        if for_dimred_only:
+            self.auxilliary_cvs.extend(descriptors)
+        else:
+            self.ref_cvs.extend(descriptors)
 
 
     def save_descriptors(self, path):
