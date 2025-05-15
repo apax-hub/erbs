@@ -12,9 +12,7 @@ class MetaDFactory:
         self.compression_threshold = compression_threshold
 
     def create(self, cv_fn, dim_reduction_fn):
-
         def energy_fn(positions, Z, neighbor, box, offsets, bias_state):
-
             g_ref = bias_state.g
             norm = bias_state.normalisation
             cov = bias_state.cov
@@ -31,6 +29,7 @@ class MetaDFactory:
 
             total_bias = jnp.sum(kde_ij)
             return total_bias
+
         return energy_fn
 
 
@@ -44,11 +43,8 @@ class OPESExploreFactory:
         self.gamma = self.dE * self.beta
         self.compression_threshold = compression_threshold
 
-
     def create(self, cv_fn, dim_reduction_fn):
-
         def energy_fn(positions, Z, neighbor, box, offsets, bias_state):
-
             g_ref = bias_state.g
             norm = bias_state.normalisation
             cov = bias_state.cov
