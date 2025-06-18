@@ -15,24 +15,26 @@ def diag_gaussian(gdiff, k, cov):
 def chunked_sum_of_kernels(X, k, cov, chunk_size=200):
     # TODO use diagonal gaussian
 
-    n_chunks = X.shape[0] // chunk_size
-    if X.shape[0] % chunk_size > 0:
-        n_chunks += 1
+    n_chunks = (X.shape[0] + chunk_size - 1) // chunk_size  # ceil division
 
     G_skk = 0
     for i in range(n_chunks):
         start_i = i * chunk_size
-        end_i = i * chunk_size + chunk_size
+        end_i = min((i + 1) * chunk_size, X.shape[0])
         for j in range(n_chunks):
             start_j = j * chunk_size
-            end_j = j * chunk_size + chunk_size
-            gdiff = X[None, start_i:end_i,:] - X[start_j:end_j, None, :]
-            cov_chunk = cov[start_i:end_i,None, :]
-            k_chunk = k[start_i:end_i,:]
+            end_j = min((j + 1) * chunk_size, X.shape[0])
+
+            Xi = X[start_i:end_i]
+            Xj = X[start_j:end_j]
+            cov_chunk = cov[start_i:end_i, None, :]
+            k_chunk = k[start_i:end_i, :]
             # TODO CHECK CHUNKING FOR COV for chunksize = 1
 
-            x = np.einsum("bcj, bcj -> bc" , gdiff, gdiff / cov_chunk)
-            G_skk_chunk = k_chunk * np.exp(- x / 2.0)
+            gdiff = Xi[:, None, :] - Xj[None, :, :]
+            
+            x = np.einsum("bcj, bcj -> bc", gdiff, gdiff / cov_chunk)
+            G_skk_chunk = k_chunk * np.exp(-x / 2.0)
             G_skk += np.sum(G_skk_chunk)
 
     return G_skk
