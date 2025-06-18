@@ -12,7 +12,15 @@ def diag_gaussian(gdiff, k, cov):
     return U
 
 
-def chunked_sum_of_kernels(X, k, cov, chunk_size=200):
+def chunked_sum_of_kernels(X, k, cov, chunk_size: int|None=None):
+    if chunk_size is None:
+        gdiff = X[:, None, :] - X[None, :, :]
+        cov_broadcast = cov[:, None, :]
+        x = np.einsum('ijd,ijd->ij', gdiff, gdiff / cov_broadcast)
+        G_skk = k * np.exp(-0.5 * x)
+
+        return np.sum(G_skk)
+
     # TODO use diagonal gaussian
 
     n_chunks = (X.shape[0] + chunk_size - 1) // chunk_size  # ceil division
