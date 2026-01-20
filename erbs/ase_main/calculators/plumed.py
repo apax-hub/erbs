@@ -1,14 +1,13 @@
+from os.path import exists
+
+import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
 from ase.io.trajectory import Trajectory
-from ase.parallel import broadcast
-from ase.parallel import world
-import numpy as np
-from os.path import exists
-from ase.units import fs, mol, kJ, nm
+from ase.parallel import broadcast, world
+from ase.units import fs, kJ, mol, nm
 
 
-def restart_from_trajectory(prev_traj, *args, prev_steps=None, atoms=None,
-                            **kwargs):
+def restart_from_trajectory(prev_traj, *args, prev_steps=None, atoms=None, **kwargs):
     """This function helps the user to restart a plumed simulation
     from a trajectory file.
 
@@ -44,10 +43,20 @@ def restart_from_trajectory(prev_traj, *args, prev_steps=None, atoms=None,
 
 
 class Plumed(Calculator):
-    implemented_properties = ['energy', 'forces']
+    implemented_properties = ["energy", "forces"]
 
-    def __init__(self, calc, input, timestep, atoms=None, kT=1., log='',
-                 restart=False, use_charge=False, update_charge=False):
+    def __init__(
+        self,
+        calc,
+        input,
+        timestep,
+        atoms=None,
+        kT=1.0,
+        log="",
+        restart=False,
+        use_charge=False,
+        update_charge=False,
+    ):
         """
         Plumed calculator is used for simulations of enhanced sampling methods
         with the open-source code PLUMED (plumed.org).
@@ -109,8 +118,10 @@ class Plumed(Calculator):
         from plumed import Plumed as pl
 
         if atoms is None:
-            raise TypeError('plumed calculator has to be defined with the \
-                             object atoms inside.')
+            raise TypeError(
+                "plumed calculator has to be defined with the \
+                             object atoms inside."
+            )
 
         self.istep = 0
         Calculator.__init__(self, atoms=atoms)
@@ -124,7 +135,7 @@ class Plumed(Calculator):
             natoms = len(atoms.get_positions())
             self.plumed = pl()
 
-            ''' Units setup
+            """ Units setup
             warning: inputs and outputs of plumed will still be in
             plumed units.
 
@@ -133,14 +144,14 @@ class Plumed(Calculator):
             nm to Angstrom
             ps to ASE time units
             ASE and plumed - charge unit is in e units
-            ASE and plumed - mass unit is in a.m.u units '''
+            ASE and plumed - mass unit is in a.m.u units """
 
             ps = 1000 * fs
             self.plumed.cmd("setMDEnergyUnits", mol / kJ)
             self.plumed.cmd("setMDLengthUnits", 1 / nm)
             self.plumed.cmd("setMDTimeUnits", 1 / ps)
-            self.plumed.cmd("setMDChargeUnits", 1.)
-            self.plumed.cmd("setMDMassUnits", 1.)
+            self.plumed.cmd("setMDChargeUnits", 1.0)
+            self.plumed.cmd("setMDMassUnits", 1.0)
 
             self.plumed.cmd("setNatoms", natoms)
             self.plumed.cmd("setMDEngine", "ASE")
@@ -154,17 +165,17 @@ class Plumed(Calculator):
         self.atoms = atoms
 
     def _get_name(self):
-        return f'{self.calc.name}+Plumed'
+        return f"{self.calc.name}+Plumed"
 
-    def calculate(self, atoms=None, properties=['energy', 'forces'],
-                  system_changes=all_changes):
+    def calculate(
+        self, atoms=None, properties=["energy", "forces"], system_changes=all_changes
+    ):
         Calculator.calculate(self, atoms, properties, system_changes)
 
-        comp = self.compute_energy_and_forces(self.atoms.get_positions(),
-                                              self.istep)
+        comp = self.compute_energy_and_forces(self.atoms.get_positions(), self.istep)
         energy, forces = comp
         self.istep += 1
-        self.results['energy'], self. results['forces'] = energy, forces
+        self.results["energy"], self.results["forces"] = energy, forces
 
     def compute_energy_and_forces(self, pos, istep):
         unbiased_energy = self.calc.get_potential_energy(self.atoms)
@@ -183,11 +194,10 @@ class Plumed(Calculator):
         self.plumed.cmd("setStep", istep)
 
         if self.use_charge:
-            if 'charges' in self.calc.implemented_properties and \
-               self.update_charge:
+            if "charges" in self.calc.implemented_properties and self.update_charge:
                 charges = self.calc.get_charges(atoms=self.atoms.copy())
 
-            elif self.atoms.has('initial_charges') and not self.update_charge:
+            elif self.atoms.has("initial_charges") and not self.update_charge:
                 charges = self.atoms.get_initial_charges()
 
             else:
@@ -215,11 +225,11 @@ class Plumed(Calculator):
         return [energy_bias, forces_bias]
 
     def write_plumed_files(self, images):
-        """ This function computes what is required in
+        """This function computes what is required in
         plumed input for some trajectory.
 
         The outputs are saved in the typical files of
-        plumed such as COLVAR, HILLS """
+        plumed such as COLVAR, HILLS"""
         for i, image in enumerate(images):
             pos = image.get_positions()
             self.compute_energy_and_forces(pos, i)
@@ -231,20 +241,20 @@ class Plumed(Calculator):
             read_files[file_name] = np.loadtxt(file_name, unpack=True)
         else:
             for line in self.input:
-                if line.find('FILE') != -1:
-                    ini = line.find('FILE')
-                    end = line.find(' ', ini)
+                if line.find("FILE") != -1:
+                    ini = line.find("FILE")
+                    end = line.find(" ", ini)
                     if end == -1:
-                        file_name = line[ini + 5:]
+                        file_name = line[ini + 5 :]
                     else:
-                        file_name = line[ini + 5:end]
+                        file_name = line[ini + 5 : end]
                     read_files[file_name] = np.loadtxt(file_name, unpack=True)
 
             if len(read_files) == 0:
-                if exists('COLVAR'):
-                    read_files['COLVAR'] = np.loadtxt('COLVAR', unpack=True)
-                if exists('HILLS'):
-                    read_files['HILLS'] = np.loadtxt('HILLS', unpack=True)
+                if exists("COLVAR"):
+                    read_files["COLVAR"] = np.loadtxt("COLVAR", unpack=True)
+                if exists("HILLS"):
+                    read_files["HILLS"] = np.loadtxt("HILLS", unpack=True)
         assert not len(read_files) == 0, "There are not files for reading"
         return read_files
 

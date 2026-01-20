@@ -1,23 +1,24 @@
-from erbs.bias import GKernelBias
-from erbs.dim_reduction import ElementwisePCA, ElementwiseLocalPCA
-from erbs.bias import energy_fn_factory, OPESExploreFactory, MetaDCutFactory
-from erbs.transformations import repartition_hydrogen_mass
-from erbs.descriptor import RBFDescriptorFlax
-from apax.layers.descriptor.basis_functions import RadialFunction, GaussianBasis
-from apax.layers.descriptor import GaussianMomentDescriptor
-
-from ase.md.velocitydistribution import MaxwellBoltzmannDistribution, Stationary, ZeroRotation
-from ase import units
-from ase.md.langevin import Langevin
-from ase.md.verlet import VelocityVerlet
 from functools import partial
-from ase.io import read, write
+
 import jax.numpy as jnp
 import numpy as np
-from tqdm import trange
+from apax.layers.descriptor import GaussianMomentDescriptor
+from apax.layers.descriptor.basis_functions import GaussianBasis, RadialFunction
+from ase import units
 from ase.calculators.singlepoint import SinglePointCalculator
-
+from ase.io import read, write
+from ase.md.langevin import Langevin
+from ase.md.velocitydistribution import (
+    MaxwellBoltzmannDistribution,
+    Stationary,
+    ZeroRotation,
+)
+from tqdm import trange
 from xtb.ase.calculator import XTB
+
+from erbs.bias import GKernelBias, OPESExploreFactory, energy_fn_factory
+from erbs.dim_reduction import ElementwiseLocalPCA
+from erbs.transformations import repartition_hydrogen_mass
 
 # path = "raw_data/etoh.traj"
 path = "raw_data/ala2.xyz"
@@ -38,14 +39,15 @@ descriptor = GaussianMomentDescriptor(
             r_min=1.1,
             r_max=r_max,
         ),
-        emb_init=None),
-    n_contr=8
-) # , Z=jnp.asarray(atoms.numbers)
+        emb_init=None,
+    ),
+    n_contr=8,
+)  # , Z=jnp.asarray(atoms.numbers)
 descriptor_fn = partial(descriptor.apply, {}, box=None, offsets=None)
 
-T=300 
-ts=2.0
-friction=0.001
+T = 300
+ts = 2.0
+friction = 0.001
 # write_interval=1
 remaining_steps = 10000
 bias_interval = 2000
@@ -66,13 +68,13 @@ traj_file = f"talk_data/{name}.extxyz"
 # zpca = ElementwisePCA(2)
 zpca = ElementwiseLocalPCA(3, 5)
 
-dE = units.kB*T *3#/ len(atoms)
+dE = units.kB * T * 3  # / len(atoms)
 # dE = 0.046 / len(atoms) - units.kB*T
 energy_fn_factory = OPESExploreFactory(T=T, dE=dE, a=1.5)
 # E_max=1.5/ 22
 # energy_fn_factory = MetaDCutFactory(k=0.01, a=0.3, E_max=E_max)
 
-xtb = XTB(method="gfn-ff") # GFN1-xTB gfn-ff
+xtb = XTB(method="gfn-ff")  # GFN1-xTB gfn-ff
 calc = GKernelBias(
     xtb,
     descriptor_fn,

@@ -1,20 +1,23 @@
-import ase
-import numpy as np
-from erbs.bias.energy_function_factory import OPESExploreFactory
-from erbs.bias.potential import ERBS
-# from erbs.dim_reduction.elementwise_pca import ElementwiseLocalPCA
-from erbs.dim_reduction.elementwise_pca import GlobalPCA
-import zntrack
-from ase import units
-import ipsuite as ips
-from typing import Optional
 import typing as t
 
-class ERBSCalculator(ips.base.IPSNode):
-    _module_ = "erbs.nodes"
+import ase
+import numpy as np
+import zntrack
+from ase import units
 
-    model: t.Any = zntrack.deps()
-    data: Optional[list[ase.Atoms]] = zntrack.deps(None)
+from erbs.bias.energy_function_factory import OPESExploreFactory
+from erbs.bias.potential import ERBS
+
+# from erbs.dim_reduction.elementwise_pca import ElementwiseLocalPCA
+from erbs.dim_reduction.elementwise_pca import GlobalPCA
+
+if t.TYPE_CHECKING:
+    from apax.nodes import Apax
+
+
+class ERBSCalculator(zntrack.Node):
+    model: "Apax" = zntrack.deps()
+    data: t.Optional[list[ase.Atoms]] = zntrack.deps(None)
     data_for_dimred_only: bool = zntrack.params(True)
 
     n_basis: float = zntrack.params(4)
@@ -23,7 +26,7 @@ class ERBSCalculator(ips.base.IPSNode):
     n_contr: float = zntrack.params(8)
 
     pca_components: int = zntrack.params(5)
-    skip_first_n_components: Optional[int] = zntrack.params(None)
+    skip_first_n_components: t.Optional[int] = zntrack.params(None)
 
     barrier_factor: float = zntrack.params(3.0)
     band_width: float = zntrack.params(1.5)
@@ -37,18 +40,22 @@ class ERBSCalculator(ips.base.IPSNode):
 
     def get_calculator(self, **kwargs):
         # zpca = ElementwiseLocalPCA(self.pca_components, self.initial_clusters)
-        pca = GlobalPCA(self.pca_components, skip_first_n_components=self.skip_first_n_components)
+        pca = GlobalPCA(
+            self.pca_components, skip_first_n_components=self.skip_first_n_components
+        )
 
-        dE = units.kB*self.temperature * self.barrier_factor
-        energy_fn_factory = OPESExploreFactory(T=self.temperature, dE=dE, a=self.band_width)
+        dE = units.kB * self.temperature * self.barrier_factor
+        energy_fn_factory = OPESExploreFactory(
+            T=self.temperature, dE=dE, a=self.band_width
+        )
 
         base_calc = self.model.get_calculator()
         calc = ERBS(
             base_calc,
             pca,
             energy_fn_factory,
-            n_basis = self.n_basis,
-            r_min =self.r_min,
+            n_basis=self.n_basis,
+            r_min=self.r_min,
             r_max=self.r_max,
             dr_threshold=self.nl_skin,
             interval=self.bias_interval,

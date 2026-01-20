@@ -1,23 +1,19 @@
 import jax.numpy as jnp
 import numpy as np
+from sklearn.cluster import MiniBatchKMeans
 from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
-from sklearn.cluster import MiniBatchKMeans
 
 
 class DimReduction:
     def __init__(self, n_components=2):
         self.n_components = n_components
-    
-    def fit_transform(self, g, Z):
-        ...
 
-    def apply_clustering(self, g, Z):
-        ...
+    def fit_transform(self, g, Z): ...
 
-    def create_dim_reduction_fn(self):
-        ...
+    def apply_clustering(self, g, Z): ...
 
+    def create_dim_reduction_fn(self): ...
 
 
 def global_flexible_pca(g, n_components):
@@ -53,16 +49,16 @@ class GlobalPCA(DimReduction):
         self.sigmaT = sigmaT
 
         if self.skip_first_n_components is not None:
-            g_pca = g_pca[:,self.skip_first_n_components:]
+            g_pca = g_pca[:, self.skip_first_n_components :]
 
         return g_pca
-    
+
     def create_dim_reduction_fn(self):
         def dim_reduction_fn(g_i):
             g_reduced_i = (g_i - self.mu) @ self.sigmaT
 
             if self.skip_first_n_components is not None:
-                g_reduced_i = g_reduced_i[:,self.skip_first_n_components:]
+                g_reduced_i = g_reduced_i[:, self.skip_first_n_components :]
             return g_reduced_i
 
         return dim_reduction_fn
@@ -118,25 +114,25 @@ class ElementwisePCA(DimReduction):
 
 
 def kmeans_silhouette_score(estimator, X):
-    score = silhouette_score(X, estimator.labels_, metric = 'euclidean')
+    score = silhouette_score(X, estimator.labels_, metric="euclidean")
     return score
 
 
 class KMeansFallback:
-
     def __init__(self) -> None:
         self.labels_ = None
         self.n_clusters = 1
 
     def fit(self, X):
         self.labels_ = np.zeros((X.shape[0]), dtype=np.int32)
+
     def predict(self, X):
         return np.zeros(X.shape[0], dtype=np.int32)
 
 
 def flexible_pca(g_z, n_components, labels, cluster_idx, total_n_clusters):
-    g_cluster = g_z[labels==cluster_idx]
-    idxs = labels[labels==cluster_idx] + total_n_clusters
+    g_cluster = g_z[labels == cluster_idx]
+    idxs = labels[labels == cluster_idx] + total_n_clusters
     n_samples = g_cluster.shape[0]
     if n_samples < n_components:
         mean = np.mean(g_cluster, axis=0)
@@ -160,7 +156,6 @@ def flexible_pca(g_z, n_components, labels, cluster_idx, total_n_clusters):
     return g_pca, mu, sigmaT, idxs
 
 
-
 class ElementwiseLocalPCA(DimReduction):
     def __init__(self, n_components=2, kmax=10) -> None:
         self.n_components = n_components
@@ -176,17 +171,17 @@ class ElementwiseLocalPCA(DimReduction):
     def determine_cluster_range(self, element, n_samples):
         current_num_clusters = self.clusters_per_element[element]
         if current_num_clusters is None:
-            kmin=2
+            kmin = 2
             if n_samples <= 3:
                 lower = 3
             else:
-                lower = n_samples-1
+                lower = n_samples - 1
             kmax = min(lower, self.kmax)
         else:
-            kmin = max(2, current_num_clusters-1)
-            kmax = min(n_samples -1, current_num_clusters+1)
+            kmin = max(2, current_num_clusters - 1)
+            kmax = min(n_samples - 1, current_num_clusters + 1)
         return range(kmin, kmax)
-    
+
     def fit_clustering(self, element, X):
         n_samples = X.shape[0]
 
@@ -201,13 +196,17 @@ class ElementwiseLocalPCA(DimReduction):
 
         for k in cluster_range:
             ndata = X.shape[0]
-            kmeans = MiniBatchKMeans(n_clusters = k, n_init="auto", init="k-means++", max_iter=2).fit(X)
+            kmeans = MiniBatchKMeans(
+                n_clusters=k, n_init="auto", init="k-means++", max_iter=2
+            ).fit(X)
             labels = kmeans.labels_
             if ndata > 2000:
                 sample_size = 2000
             else:
                 sample_size = None
-            score = silhouette_score(X, labels, metric = 'euclidean', sample_size=sample_size)
+            score = silhouette_score(
+                X, labels, metric="euclidean", sample_size=sample_size
+            )
             sil.append(score)
             kmean_models.append(kmeans)
         best_model_idx = np.argmax(sil)
@@ -229,7 +228,7 @@ class ElementwiseLocalPCA(DimReduction):
         mus = []
         sigmaTs = []
         total_n_clusters = 0
-        
+
         for element in elements:
             g_z = g[Z == element]
 
@@ -239,11 +238,7 @@ class ElementwiseLocalPCA(DimReduction):
             n_clusters = cluster_model.n_clusters
             for cluster_idx in range(n_clusters):
                 g_pca, mu, sigmaT, idxs = flexible_pca(
-                    g_z,
-                    self.n_components,
-                    labels,
-                    cluster_idx,
-                    total_n_clusters
+                    g_z, self.n_components, labels, cluster_idx, total_n_clusters
                 )
 
                 mus.append(mu)
@@ -258,9 +253,8 @@ class ElementwiseLocalPCA(DimReduction):
         cluster_idxs = np.concatenate(cluster_idxs, axis=0)
         self.mu, self.sigmaT = jnp.array(mus), jnp.array(sigmaTs)
         return new_gs, cluster_idxs
-    
+
     def apply_clustering(self, g, Z):
-        
         g = np.asarray(g)
         Z = np.asarray(Z)
 
@@ -268,8 +262,8 @@ class ElementwiseLocalPCA(DimReduction):
         for i, z in enumerate(Z):
             if self.cluster_models[z] is None:
                 raise ValueError(f"No clustering found for element {z}")
-            gi = g[i][None,:]
-            cluster_idx = self.cluster_models[z].predict(gi) 
+            gi = g[i][None, :]
+            cluster_idx = self.cluster_models[z].predict(gi)
             cluster_idxs.append(cluster_idx + self.cluster_offset_per_element[z])
 
         cluster_idxs = jnp.array(cluster_idxs, dtype=jnp.int32)
@@ -277,7 +271,6 @@ class ElementwiseLocalPCA(DimReduction):
         return cluster_idxs
 
     def create_dim_reduction_fn(self):
-
         def dim_reduction_fn(g_i, cluster_idx):
             g_reduced_i = (g_i - self.mu[cluster_idx]) @ self.sigmaT[cluster_idx]
             return g_reduced_i

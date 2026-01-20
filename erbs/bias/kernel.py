@@ -1,22 +1,24 @@
 import jax.numpy as jnp
 import numpy as np
 
+
 def gaussian(g_diff, k, a):
     x = jnp.sum((g_diff) ** 2)
     U = k * jnp.exp(-x / (a * 2.0))
     return U
 
+
 def diag_gaussian(gdiff, k, cov):
     x = jnp.dot(gdiff.T, gdiff / cov)
-    U = k * jnp.exp(-x/2)
+    U = k * jnp.exp(-x / 2)
     return U
 
 
-def chunked_sum_of_kernels(X, k, cov, chunk_size: int|None=None):
+def chunked_sum_of_kernels(X, k, cov, chunk_size: int | None = None):
     if chunk_size is None:
         gdiff = X[:, None, :] - X[None, :, :]
         cov_broadcast = cov[:, None, :]
-        x = np.einsum('ijd,ijd->ij', gdiff, gdiff / cov_broadcast)
+        x = np.einsum("ijd,ijd->ij", gdiff, gdiff / cov_broadcast)
         G_skk = k * np.exp(-0.5 * x)
 
         return np.sum(G_skk)
@@ -40,7 +42,7 @@ def chunked_sum_of_kernels(X, k, cov, chunk_size: int|None=None):
             # TODO CHECK CHUNKING FOR COV for chunksize = 1
 
             gdiff = Xi[:, None, :] - Xj[None, :, :]
-            
+
             x = np.einsum("bcj, bcj -> bc", gdiff, gdiff / cov_chunk)
             G_skk_chunk = k_chunk * np.exp(-x / 2.0)
             G_skk += np.sum(G_skk_chunk)
@@ -49,28 +51,25 @@ def chunked_sum_of_kernels(X, k, cov, chunk_size: int|None=None):
 
 
 def global_mc_normalisation(g_ref, height, cov):
-
     G_skk = chunked_sum_of_kernels(g_ref, height, cov)
     mc_norm = G_skk / g_ref.shape[0]
 
     return mc_norm
 
 
-
 def mc_normalisation(cluster_models, cluster_idxs, g_ref, height, var):
-
     total_n_clusters = 0
-    elements = sorted(list(cluster_models.keys()))
-    mc_norm = np.zeros(np.max(cluster_idxs) + 1) # Z in the paper
+    elements = sorted(cluster_models.keys())
+    mc_norm = np.zeros(np.max(cluster_idxs) + 1)  # Z in the paper
 
     for element in elements:
         current_n_clusters = 0
         for cluster in range(cluster_models[element].n_clusters):
             current_n_clusters += 1
             cluster_with_offset = cluster + total_n_clusters
-            g_filtered = g_ref[cluster_idxs==cluster_with_offset]
-            height_filtered = height[cluster_idxs==cluster_with_offset]
-            var_filtered = var[cluster_idxs==cluster_with_offset]
+            g_filtered = g_ref[cluster_idxs == cluster_with_offset]
+            height_filtered = height[cluster_idxs == cluster_with_offset]
+            var_filtered = var[cluster_idxs == cluster_with_offset]
 
             G_skk = chunked_sum_of_kernels(g_filtered, height_filtered, var_filtered)
 
@@ -80,27 +79,27 @@ def mc_normalisation(cluster_models, cluster_idxs, g_ref, height, var):
     return mc_norm
 
 
-
 def distances(P1, p2):
     dv = P1 - p2[None, :]
     d = np.linalg.norm(dv, axis=1)
     return d
 
+
 def mahalanobis(P1, Var1, p2):
-    arg = (P1 - p2[None, :])**2 / Var1
+    arg = (P1 - p2[None, :]) ** 2 / Var1
     d = np.sqrt(np.sum(arg, axis=1))
     return d
+
 
 def combine_kernels(h1, h2, p1, p2, var1, var2):
     h = h1 + h2
     p = (h1 * p1 + h2 * p2) / h
-    var = (h1 * (var1 + p1**2) + h2 * (var2 + p2**2))/h - p**2
+    var = (h1 * (var1 + p1**2) + h2 * (var2 + p2**2)) / h - p**2
 
     return p, h, var
 
 
 def compress(g, cov, h, thresh=0.8):
-
     gc = np.full(g.shape, 1000.0)
     covc = np.full(g.shape, 0.0)
     hc = np.full((g.shape[0], 1), 0.0)
@@ -118,7 +117,7 @@ def compress(g, cov, h, thresh=0.8):
         h2 = h[ii]
         cov2 = cov[ii]
 
-        dists = mahalanobis(P1,Cov1, p2)
+        dists = mahalanobis(P1, Cov1, p2)
         dmin = np.min(dists)
         idx = np.argmin(dists)
 
@@ -137,7 +136,7 @@ def compress(g, cov, h, thresh=0.8):
             gc[idx] = pnew
             hc[idx] = hnew
             covc[idx] = covnew
-        
+
     gc = gc[:n_compressed]
     covc = covc[:n_compressed]
     hc = hc[:n_compressed]
@@ -145,7 +144,7 @@ def compress(g, cov, h, thresh=0.8):
 
 
 def incremental_compress(gc, covc, hc, gnew, covnew, hnew, thresh=0.8):
-    dists = mahalanobis(gc,covc, gnew)
+    dists = mahalanobis(gc, covc, gnew)
 
     dmin = np.min(dists)
     idx = np.argmin(dists)
@@ -160,10 +159,10 @@ def incremental_compress(gc, covc, hc, gnew, covnew, hnew, thresh=0.8):
         gc[idx] = pnew
         hc[idx] = hnew
         covc[idx] = covnew
-    
+
     else:
-        gc = np.append(gc, gnew[None,:], axis=0)
-        hc = np.append(hc, hnew[None,:], axis=0)
-        covc = np.append(covc, covnew[None,:], axis=0)
-    
+        gc = np.append(gc, gnew[None, :], axis=0)
+        hc = np.append(hc, hnew[None, :], axis=0)
+        covc = np.append(covc, covnew[None, :], axis=0)
+
     return gc, covc, hc
