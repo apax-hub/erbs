@@ -28,6 +28,7 @@ def build_feature_neighbor_fns(
     n_basis,
     r_max,
     dr_threshold,
+    feature_fn: Optional[callable] = None,
     config: Optional[Config] = None,
     params=None,
     batched=False,
@@ -53,6 +54,7 @@ def build_feature_neighbor_fns(
             disable_cell_list=True,
             format=partition.Sparse,
         )
+
     if config and params:
         n_species = 119  # int(np.max(Z) + 1)
         Builder = config.model.get_builder()
@@ -94,6 +96,7 @@ class ERBS(Calculator):
         base_calc: Calculator,
         dim_reduction_factory: DimReduction,
         energy_fn_factory: OPESExploreFactory,
+        feature_fn: Optional[callable] = None,
         model_dir: Optional[Union[Path, list[Path]]] = None,
         n_basis=5,
         r_max=6.0,
@@ -141,7 +144,10 @@ class ERBS(Calculator):
 
     def _initialize_nl(self, atoms):
         self.cv_fn, self.neighbor_fn = build_feature_neighbor_fns(
-            atoms, self.n_basis, self.r_max, self.dr_threshold
+            atoms, self.n_basis, self.r_max, self.dr_threshold,
+            feature_fn=self.feature_fn,
+            config=self.model_config,
+            params=self.params,
         )
         self.cv_fn = jax.jit(self.cv_fn)
 
