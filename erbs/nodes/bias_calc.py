@@ -16,7 +16,7 @@ if t.TYPE_CHECKING:
 
 
 class ERBSCalculator(zntrack.Node):
-    model: "Apax" = zntrack.deps()
+    model: "ApaxBase" = zntrack.deps()
     data: t.Optional[list[ase.Atoms]] = zntrack.deps(None)
     data_for_dimred_only: bool = zntrack.params(True)
 
