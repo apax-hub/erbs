@@ -1,3 +1,4 @@
+import importlib.metadata
 import os
 import warnings
 
@@ -11,3 +12,5 @@ jax.config.update("jax_enable_x64", True)
 setup_ase()
 
 warnings.filterwarnings(action="ignore", category=FutureWarning, module=r"jax.*scatter")
+
+__version__ = importlib.metadata.version("erbs")
