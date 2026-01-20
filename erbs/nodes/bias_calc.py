@@ -8,25 +8,26 @@ import zntrack
 from ase import units
 import ipsuite as ips
 from typing import Optional
+import typing as t
 
 class ERBSCalculator(ips.base.IPSNode):
     _module_ = "erbs.nodes"
 
-    model = zntrack.deps()
+    model: t.Any = zntrack.deps()
     data: Optional[list[ase.Atoms]] = zntrack.deps(None)
     data_for_dimred_only: bool = zntrack.params(True)
 
     n_basis: float = zntrack.params(4)
     r_min: float = zntrack.params(1.1)
-    r_max = zntrack.params(6.0)
+    r_max: float = zntrack.params(6.0)
     n_contr: float = zntrack.params(8)
 
     pca_components: int = zntrack.params(5)
     skip_first_n_components: Optional[int] = zntrack.params(None)
 
-    barrier_factor = zntrack.params(3)
+    barrier_factor: float = zntrack.params(3.0)
     band_width: float = zntrack.params(1.5)
-    temperature = zntrack.params(300)
+    temperature: float = zntrack.params(300)
     bias_interval: int = zntrack.params(2000)
     nl_skin: float = zntrack.params(0.5)
     update_iterations: int = zntrack.params(np.inf)
