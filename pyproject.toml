@@ -1,6 +1,6 @@
 [project]
 name = "erbs"
-version = "0.1.0"
+version = "0.2.0"
 description = "Enhanced sampling in the representation space of atomistic neural networks."
 keywords=["machine-learning", "interatomic potentials", "molecular-dynamics", "enhanced sampling"]
 license = "MIT"
