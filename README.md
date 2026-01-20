@@ -12,7 +12,6 @@ The library itself ships with a simplified version of the Gaussian Moment descri
 - Automated CV Selection: Automatically identifies slow degrees of freedom via PCA on the descriptor space.
 - OPES-Explore: Uses the OPES-Explore formalism to rapidly explore the free energy surface with bounded bias potentials.
 - Model Agnostic: Can be used with any atomistic descriptor that matches the required function signature (see Documentation).
-- JAX Native: Fully differentiable and JIT-compilable for high-performance simulation.
 
 
 ## Installation
