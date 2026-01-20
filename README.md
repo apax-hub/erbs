@@ -67,7 +67,8 @@ Under the supervision of Johannes Kästner.
 
 ## Contributing
 
-We are happy to receive your issues and pull requests! If you want to add support for a new descriptor type or interface, please open an issue to discuss the implementation details.
+We are happy to receive your issues and pull requests!
+If you want to add a new dimensionality reduction, energy function or descriptor, please open an issue to discuss the implementation details.
 
 
 
