@@ -46,10 +46,10 @@ def test_erbs_md_integration():
         base_calc=base_calc,
         dim_reduction_factory=pca,
         energy_fn_factory=energy_fn_factory,
-        n_basis=4,         # Small basis for testing
-        r_min=0.5,          # Typical bond range start
-        r_max=3.0,          # Cutoff
-        dr_threshold=0.5,   # Neighborlist skin
+        n_basis=4,  # Small basis for testing
+        r_min=0.5,  # Typical bond range start
+        r_max=3.0,  # Cutoff
+        dr_threshold=0.5,  # Neighborlist skin
         interval=bias_interval,
     )
 
@@ -84,5 +84,5 @@ def test_erbs_md_integration():
     # Optional: Check if ERBS specific results are stored
     # This depends on your implementation, but usually wrappers store
     # the bias energy separately
-    if 'bias_energy' in calc.results:
-        assert calc.results['bias_energy'] >= 0
+    if "bias_energy" in calc.results:
+        assert calc.results["bias_energy"] >= 0

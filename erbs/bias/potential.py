@@ -145,7 +145,10 @@ class ERBS(Calculator):
 
     def _initialize_nl(self, atoms):
         self.cv_fn, self.neighbor_fn = build_feature_neighbor_fns(
-            atoms, self.n_basis, self.r_max, self.dr_threshold,
+            atoms,
+            self.n_basis,
+            self.r_max,
+            self.dr_threshold,
             feature_fn=self.feature_fn,
             config=self.model_config,
             params=self.params,
