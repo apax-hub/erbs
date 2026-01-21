@@ -56,6 +56,8 @@ class GlobalPCA(DimReduction):
     def create_dim_reduction_fn(self):
         def dim_reduction_fn(g_i):
             g_reduced_i = (g_i - self.mu) @ self.sigmaT
+            if g_reduced_i.ndim == 1:
+                g_reduced_i = g_reduced_i[None, :]
 
             if self.skip_first_n_components is not None:
                 g_reduced_i = g_reduced_i[:, self.skip_first_n_components :]

@@ -116,6 +116,7 @@ class ERBS(Calculator):
         self.n_basis = n_basis
         self.model_config = None
         self.params = None
+        self.feature_fn = feature_fn
         if model_dir:
             self.model_config, self.params = restore_parameters(model_dir)
         self.r_max = r_max

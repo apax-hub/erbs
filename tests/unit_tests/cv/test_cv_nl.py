@@ -9,4 +9,4 @@ def test_compute_cv_nl():
 
     nl = compute_cv_nl(Z, Z_ref)
 
-    assert nl.shape == [2, 6]
+    assert nl.shape == (2, 6)

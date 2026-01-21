@@ -1,3 +1,3 @@
-from erbs.dim_reduction.elementwise_pca import ElementwiseLocalPCA, ElementwisePCA
+from erbs.dim_reduction.elementwise_pca import GlobalPCA, ElementwiseLocalPCA, ElementwisePCA
 
-__all__ = ["ElementwisePCA", "ElementwiseLocalPCA"]
+__all__ = ["GlobalPCA", "ElementwisePCA", "ElementwiseLocalPCA"]

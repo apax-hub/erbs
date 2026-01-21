@@ -34,7 +34,7 @@ class MetaDFactory:
 
 
 class OPESExploreFactory:
-    def __init__(self, T=300, dE=1.2, a=0.3, compression_threshold=0.4) -> None:
+    def __init__(self, T:float=300, dE:float=1.2, a=0.3, compression_threshold=0.4) -> None:
         self.beta = 1 / (units.kB * T)
         self.std = a
         if dE < units.kB * T:
