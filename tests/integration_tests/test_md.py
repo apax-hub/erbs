@@ -1,15 +1,15 @@
-import pytest
 import numpy as np
+import pytest
+from ase import units
 from ase.build import molecule
 from ase.calculators.emt import EMT
-from ase import units
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from ase.md.verlet import VelocityVerlet
 
 # Adjust these imports to match your actual package structure
-from erbs.bias import ERBS
+from erbs.bias import ERBS, OPESExploreFactory
 from erbs.dim_reduction import GlobalPCA
-from erbs.bias import OPESExploreFactory
+
 
 def test_erbs_md_integration():
     """
