@@ -14,23 +14,23 @@ from erbs.bias import OPESExploreFactory
 def test_erbs_md_integration():
     """
     Integration test for ERBS calculator wrapper.
-    Verifies that the calculator can be instantiated and drives 
+    Verifies that the calculator can be instantiated and drives
     a stable MD simulation for a few steps.
     """
     # 1. Setup Test System (Water molecule)
     # Using a simple molecule to keep the test fast
     atoms = molecule("H2O")
     atoms.center(vacuum=4.0)
-    
+
     # 2. Setup Base Calculator
     # EMT is a fast, built-in potential in ASE (good for testing)
     base_calc = EMT()
-    
+
     # 3. Define ERBS Parameters
     temperature = 300.0
     barrier_factor = 10.0
     bias_interval = 1
-    
+
     # PCA Setup
     # Assuming 'n_components' is the first arg based on your snippet
     pca = GlobalPCA(n_components=2, skip_first_n_components=None)
@@ -52,18 +52,18 @@ def test_erbs_md_integration():
         dr_threshold=0.5,   # Neighborlist skin
         interval=bias_interval,
     )
-    
+
     atoms.calc = calc
 
     # 5. Run MD Loop
     # Initialize momenta
     MaxwellBoltzmannDistribution(atoms, temperature_K=temperature)
-    
+
     # Use standard Velocity Verlet
     dyn = VelocityVerlet(atoms, timestep=0.5 * units.fs)
-    
+
     initial_energy = atoms.get_potential_energy()
-    
+
     # Run a few steps to ensure dynamics propagate
     try:
         dyn.run(steps=10)
@@ -72,17 +72,17 @@ def test_erbs_md_integration():
 
     # 6. Assertions
     final_energy = atoms.get_potential_energy()
-    
+
     # Check that energy is finite
     assert not np.isnan(final_energy)
     assert not np.isinf(final_energy)
-    
+
     # Check that the system actually moved (energy changed)
     # In a biased simulation, energy should fluctuate
     assert final_energy != initial_energy
 
     # Optional: Check if ERBS specific results are stored
-    # This depends on your implementation, but usually wrappers store 
+    # This depends on your implementation, but usually wrappers store
     # the bias energy separately
     if 'bias_energy' in calc.results:
         assert calc.results['bias_energy'] >= 0
