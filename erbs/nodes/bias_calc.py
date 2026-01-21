@@ -12,7 +12,7 @@ from erbs.bias.potential import ERBS
 from erbs.dim_reduction.elementwise_pca import GlobalPCA
 
 if t.TYPE_CHECKING:
-    from apax.nodes import Apax
+    pass
 
 
 class ERBSCalculator(zntrack.Node):
