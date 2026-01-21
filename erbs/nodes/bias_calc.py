@@ -12,11 +12,11 @@ from erbs.bias.potential import ERBS
 from erbs.dim_reduction.elementwise_pca import GlobalPCA
 
 if t.TYPE_CHECKING:
-    from apax.nodes import Apax
+    pass
 
 
 class ERBSCalculator(zntrack.Node):
-    model: "ApaxBase" = zntrack.deps()
+    model: t.Any = zntrack.deps()
     data: t.Optional[list[ase.Atoms]] = zntrack.deps(None)
     data_for_dimred_only: bool = zntrack.params(True)
 
