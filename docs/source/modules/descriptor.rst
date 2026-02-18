@@ -1,5 +1,5 @@
 Descriptors
 ===========
 
-.. automodule:: erbs.descriptor.example_descriptor
+.. automodule:: erbs.descriptors.example_descriptor
     :members:

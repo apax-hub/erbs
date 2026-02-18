@@ -7,8 +7,9 @@ from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from ase.md.verlet import VelocityVerlet
 
 # Adjust these imports to match your actual package structure
-from erbs.bias import ERBS, OPESExploreFactory
-from erbs.dim_reduction import GlobalPCA
+from erbs.biases import OPESExploreFactory
+from erbs.interfaces.ase import ERBS
+from erbs.dim_reductions import GlobalPCA
 
 
 def test_erbs_md_integration():
