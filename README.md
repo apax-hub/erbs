@@ -25,7 +25,7 @@ pip install erbs
 To install the latest development version from GitHub:
 
 ```bash
-pip install git+https://github.com/apax_hub/erbs.git
+pip install git+https://github.com/apax-hub/erbs.git
 ```
 
 
