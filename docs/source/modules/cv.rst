@@ -1,5 +1,5 @@
 Collective Variables
 ====================
 
-.. automodule:: erbs.cv.cv_nl
+.. automodule:: erbs.cvs.cv_nl
     :members:

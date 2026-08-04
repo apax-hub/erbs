@@ -32,27 +32,30 @@ pip install git+https://github.com/apax-hub/erbs.git
 ## Usage
 
 ERBS integrates with ASE to run enhanced sampling simulations.
-A typical workflow involves the typical ASE setup, selecting a descriptor and wrapping the plain energy/forces calculator with ERBS.
+A typical workflow involves the typical ASE setup, selecting a descriptor builder and wrapping the plain energy/forces calculator with ERBS.
 
 ```python
+from erbs.interfaces.ase import ERBS
+from erbs.biases import OPESExploreFactory
+from erbs.dim_reductions import GlobalPCA
+from erbs.descriptors.factory import DescriptorBuilder
 
-
-dim_reduction = GlobalPCA(pca_components)
+dim_reduction = GlobalPCA(n_components=pca_components)
 
 dE = units.kB * temperature * barrier_factor
 energy_fn_factory = OPESExploreFactory(
     T=temperature, dE=dE, a=band_width
 )
 
-base_calc = ...
+# Use the built-in Gaussian Moment descriptor
+feature_builder = DescriptorBuilder(n_basis=4, r_max=6.0)
+
+base_calc = ... # Any ASE Calculator
 calc = ERBS(
-    base_calc,
-    dim_reduction,
-    energy_fn_factory,
-    n_basis=4, # Uses built-in GM descriptor
-    r_min=1.1,
-    r_max=6.0,
-    dr_threshold=0.5,
+    base_calc=base_calc,
+    dim_reduction_factory=dim_reduction,
+    energy_fn_factory=energy_fn_factory,
+    feature_builder=feature_builder,
     interval=2000,
 )
 ```

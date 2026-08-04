@@ -1,14 +1,14 @@
 Bias Functions
 ==============
 
-.. automodule:: erbs.bias.energy_function_factory
+.. automodule:: erbs.biases.energy_function_factory
     :members:
 
-.. automodule:: erbs.bias.potential
+.. automodule:: erbs.interfaces.ase
     :members:
 
-.. automodule:: erbs.bias.kernel
+.. automodule:: erbs.biases.kernel
     :members:
 
-.. automodule:: erbs.bias.state
+.. automodule:: erbs.biases.state
     :members:

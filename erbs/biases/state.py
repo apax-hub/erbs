@@ -6,7 +6,7 @@ import numpy as np
 from flax.struct import dataclass
 from jax import Array
 
-from erbs.bias.kernel import compress, global_mc_normalisation, incremental_compress
+from erbs.biases.kernel import compress, global_mc_normalisation, incremental_compress
 
 
 @dataclass

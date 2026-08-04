@@ -2,7 +2,7 @@ import jax.numpy as jnp
 from ase import units
 from jax import vmap
 
-from erbs.bias.kernel import gaussian
+from erbs.biases.kernel import gaussian
 
 
 class MetaDFactory:

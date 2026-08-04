@@ -7,8 +7,10 @@ from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from ase.md.verlet import VelocityVerlet
 
 # Adjust these imports to match your actual package structure
-from erbs.bias import ERBS, OPESExploreFactory
-from erbs.dim_reduction import GlobalPCA
+from erbs.biases import OPESExploreFactory
+from erbs.interfaces.ase import ERBS
+from erbs.dim_reductions import GlobalPCA
+from erbs.descriptors.factory import DescriptorBuilder
 
 
 def test_erbs_md_integration():
@@ -42,13 +44,12 @@ def test_erbs_md_integration():
 
     # 4. Instantiate ERBS Calculator
     # Using the exact signature you provided
+    feature_builder = DescriptorBuilder(n_basis=4, r_max=3.0)
     calc = ERBS(
         base_calc=base_calc,
         dim_reduction_factory=pca,
         energy_fn_factory=energy_fn_factory,
-        n_basis=4,  # Small basis for testing
-        r_min=0.5,  # Typical bond range start
-        r_max=3.0,  # Cutoff
+        feature_builder=feature_builder,
         dr_threshold=0.5,  # Neighborlist skin
         interval=bias_interval,
     )

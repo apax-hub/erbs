@@ -1,6 +1,6 @@
 import numpy as np
 
-from erbs.cv import compute_cv_nl
+from erbs.cvs import compute_cv_nl
 
 
 def test_compute_cv_nl():

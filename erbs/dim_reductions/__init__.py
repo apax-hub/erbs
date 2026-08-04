@@ -1,4 +1,4 @@
-from erbs.dim_reduction.elementwise_pca import (
+from erbs.dim_reductions.elementwise_pca import (
     ElementwiseLocalPCA,
     ElementwisePCA,
     GlobalPCA,
