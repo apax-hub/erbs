@@ -1,11 +1,10 @@
-from typing import Optional, Union
+from typing import Optional, Union, Callable
 from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 from apax.data.input_pipeline import CachedInMemoryDataset
-from apax.train.checkpoints import restore_parameters
 from apax.utils.jax_md_reduced import space
 from ase.calculators.calculator import Calculator, all_changes
 from tqdm import trange
@@ -13,7 +12,8 @@ from tqdm import trange
 from erbs.biases.energy_function_factory import OPESExploreFactory
 from erbs.biases.state import BiasState
 from erbs.dim_reductions.elementwise_pca import DimReduction
-from erbs.neighbors import build_feature_neighbor_fns
+from erbs.neighbors import build_neighbor_fn
+from erbs.descriptors.factory import FeatureBuilder
 
 
 class ERBS(Calculator):
@@ -24,9 +24,7 @@ class ERBS(Calculator):
         base_calc: Calculator,
         dim_reduction_factory: DimReduction,
         energy_fn_factory: OPESExploreFactory,
-        feature_fn: Optional[callable] = None,
-        model_dir: Optional[Union[Path, list[Path]]] = None,
-        n_basis=5,
+        feature_builder: FeatureBuilder,
         r_max=6.0,
         dr_threshold=0.5,
         interval=10_000,
@@ -36,12 +34,7 @@ class ERBS(Calculator):
         Calculator.__init__(self, **kwargs)
 
         self.base_calc = base_calc
-        self.n_basis = n_basis
-        self.model_config = None
-        self.params = None
-        self.feature_fn = feature_fn
-        if model_dir:
-            self.model_config, self.params = restore_parameters(model_dir)
+        self.feature_builder = feature_builder
         self.r_max = r_max
         self.dr_threshold = dr_threshold
         self.update_iterations = update_iterations
@@ -59,6 +52,7 @@ class ERBS(Calculator):
         self.bias_state = None
         self.neighbors = None
         self.neighbor_fn = None
+        self.displacement_fn = None
 
         self.interval = interval
         self._step_counter = 0
@@ -67,15 +61,13 @@ class ERBS(Calculator):
         self.bias_results = None
 
     def _initialize_nl(self, atoms):
-        self.cv_fn, self.neighbor_fn = build_feature_neighbor_fns(
+        self.displacement_fn, self.neighbor_fn, box = build_neighbor_fn(
             atoms,
-            self.n_basis,
             self.r_max,
             self.dr_threshold,
-            feature_fn=self.feature_fn,
-            config=self.model_config,
-            params=self.params,
+            batched=False,
         )
+        self.cv_fn = self.feature_builder(self.displacement_fn, box)
         self.cv_fn = jax.jit(self.cv_fn)
 
     def update_with_new_dimred(self, g_new):
@@ -227,13 +219,13 @@ class ERBS(Calculator):
         n_data = dataset.n_data
         ds = dataset.batch()
 
-        self.cv_fn, _ = build_feature_neighbor_fns(
+        disp_fn, _, box = build_neighbor_fn(
             atoms_list[0],
-            self.n_basis,
             self.r_max,
             dr_threshold=self.dr_threshold,
             batched=True,
         )
+        self.cv_fn = self.feature_builder(disp_fn, box)
 
         def calc_descriptor(positions, Z, neighbors, box, offsets):
             g = self.cv_fn(positions, Z, neighbors, box, offsets)
