@@ -12,7 +12,7 @@ def build_neighbor_fn(
 ) -> Tuple[Optional[Callable], Optional[Callable], jnp.ndarray]:
     """
     Sets up the neighbor function and displacement function based on the atoms object.
-    
+
     Parameters
     ----------
     atoms : ase.Atoms
@@ -23,7 +23,7 @@ def build_neighbor_fn(
         Skin distance for the neighbor list.
     batched : bool, default False
         If True, returns None for displacement_fn and neighbor_fn.
-        
+
     Returns
     -------
     displacement_fn : Optional[Callable]
