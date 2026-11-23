@@ -8,14 +8,14 @@ class FeatureBuilder(Protocol):
     def __call__(self, displacement_fn: Callable, box: jnp.ndarray) -> Callable:
         """
         Builds the feature function.
-        
+
         Parameters
         ----------
         displacement_fn : Callable
             JAX-MD displacement function.
         box : jnp.ndarray
             Simulation box.
-            
+
         Returns
         -------
         Callable
